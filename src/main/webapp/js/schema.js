@@ -103,6 +103,7 @@ class Schema {
             }
         }
     }
+    
 }
 
 export {Schema}

@@ -8,6 +8,10 @@
         <servlet-name>GestionadorXX</servlet-name>
         <servlet-class>packControl.Gestionador</servlet-class>
     </servlet>
+    <servlet>
+        <servlet-name>jsonServlet</servlet-name>
+        <servlet-class>packControl.jsonServlet</servlet-class>
+    </servlet>
     <servlet-mapping>
         <servlet-name>ControladorXX</servlet-name>
         <url-pattern>/ControladorXX</url-pattern>
@@ -15,6 +19,10 @@
     <servlet-mapping>
         <servlet-name>GestionadorXX</servlet-name>
         <url-pattern>/GestionadorXX</url-pattern>
+    </servlet-mapping>
+    <servlet-mapping>
+        <servlet-name>jsonServlet</servlet-name>
+        <url-pattern>/jsonServlet</url-pattern>
     </servlet-mapping>
     <welcome-file-list>
         <welcome-file>index.jsp</welcome-file>

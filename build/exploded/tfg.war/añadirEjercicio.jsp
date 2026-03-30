@@ -24,15 +24,19 @@
         <h1>Añadir nuevo ejercicio</h1>
         <%
             String error= (String)request.getAttribute("errorFecha");
-            if(error!=null){
+            String error2= (String) request.getAttribute("fechaPronto");
+            if(error!=null ){
         %>
         <p style="color:red; text-align:center; font-weight:bold; font-size:20px; margin-bottom:20px;"><%=error%></p>
         <%
+            }else if(error2!=null){
+        %>
+        <p style="color:red; text-align:center; font-weight:bold; font-size:20px; margin-bottom:20px;"><%=error2%></p>
+        <%
             }
         %>
-        Nombre: <input type="text" name="nombre" id="nombre" ><br><br><!-- comment -->
-        Foto: <input type="file" name="archivo" id="archivo" ><br><br><!-- comment -->
-        Resultado: <input type="file" name="archivo2" id="archivo2" ><br><br><!-- comment -->
+        
+        Ejercicio <input type="file" name="archivo" id="archivo" ><br><br><!-- comment -->
         <input type="checkbox" name="ejEvaluable" value="1" onclick="mostrarFecha(this)"> Ejercicio evaluable<br><br><!-- comment -->
         <div id="fechaContainer" style="display: none; margin-top:10px;">
             Fecha de entrega:

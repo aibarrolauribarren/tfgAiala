@@ -13,17 +13,28 @@ class Editor {
     this.init()
   }
   async loadExerciseData () {
-    //const params = new URLSearchParams(document.location.search)
+   /* //const params = new URLSearchParams(document.location.search)
     this.#gist_id = "1332da685857603b519348f010185df3"
     //this.#exercise_name = params.get('ex_name')
     this.#exercise_name = "1.1"
     const result = await fetch('https://api.github.com/gists/'+this.#gist_id)
     const data = await result.json()
-    const exercise_content = data.files[this.#exercise_name].content
+    const exercise_content = data.files[this.#exercise_name].content*/
+    const params = new URLSearchParams(document.location.search)
+    const exerciseId = params.get('id')
+
+    //const result = await fetch("./uploads/" + exerciseId + ".json")
+    const result= await fetch("jsonServlet?id=" + exerciseId)
+    const data = await result.json()
+
+    const exercise_content = JSON.stringify(data)
     App.showGraph(exercise_content)
     this.#er_diagram_data = this.cleanERDiagram(JSON.parse(exercise_content))
     console.log(this.#er_diagram_data)
-  }
+    
+     
+  
+}
   static searchInAttributes (el, id) {
     if (el.id === id) return el
     const list = el.attributes != null ? el.attributes : el.subattributes
@@ -233,18 +244,18 @@ class Editor {
 
   }
   showMappingResult (result) {
-    let elClass, backgroundColor, textColor, imgSrc
+    let elClass, backgroundColor, textColor,imgSrc
     if (result.isCorrect){
       elClass = 'success_mapping_message'
-      imgSrc = './images/happy.png'
+      //imgSrc = './images/happy.png'
     }
     else {
       elClass = 'error_mapping_message'
-      imgSrc = './images/sad.png'
+      //imgSrc = './images/sad.png'
     }
     const template = document.querySelector('#toast_template')
     const clone = template.content.cloneNode(true)
-    clone.querySelector('.toast_result_icon').src = imgSrc
+   // clone.querySelector('.toast_result_icon').src = imgSrc
     clone.querySelector('.toast_message').innerText = result.message
     clone.querySelector('.toast_message').classList.add(elClass)
     const cont = document.createElement('div')
@@ -262,6 +273,40 @@ class Editor {
         const s = this.minimizeSchema()
         const res = Mapper.checkSolution(this.#er_diagram_data, s)
         this.showMappingResult(res)
+        
+        if(res.isCorrect){
+           // alert("Ejercicio correcto")
+            
+            const params = new URLSearchParams(window.location.search)
+            const id = params.get("id")
+            fetch("Gestionador?accion=completar&id=" + id) //avisar al servlet del ejercicio completo
+          //  document.getElementById("btnSiguiente").style.display ="block" //boton siguiente ejercicio
+            /*
+            const params = new URLSearchParams(window.location.search)
+            const id = params.get("id")
+
+            const solution = this.minimizeSchema()
+
+            fetch("Gestionador?accion=guardarSolucion&id=" + id, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(solution)
+            })*/
+
+            //  seguir marcando como completado
+            const btnSiguiente= document.getElementById("btnSiguiente")
+            if(btnSiguiente){
+                btnSiguiente.style.display="block"
+                btnSiguiente.onclick=()=>{
+                    window.location.href="Gestionador?accion=siguiente&id=" + id;
+                }
+            }
+            //fetch("Gestionador?accion=completar&id=" + id)
+
+           // document.getElementById("btnSiguiente").style.display ="block"
+        }
       })
     }
   }
@@ -359,3 +404,4 @@ document.addEventListener('click',() => {
     el.classList.remove('selected')
   }
 })
+

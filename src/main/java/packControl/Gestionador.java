@@ -8,13 +8,16 @@ import jakarta.servlet.ServletConfig;
 import java.io.IOException;
 import java.io.PrintWriter;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.annotation.MultipartConfig;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import jakarta.servlet.http.Part;
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.InputStream;
 import java.sql.Connection;
 import java.sql.Date;
 import java.sql.PreparedStatement;
@@ -24,10 +27,16 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import utils.BD;
 
+
 /**
  *
  * @author quick
  */
+@MultipartConfig(
+    fileSizeThreshold = 1024 * 1024,
+    maxFileSize = 1024 * 1024 * 10,
+    maxRequestSize = 1024 * 1024 * 50
+)
 @WebServlet(name = "Gestionador", urlPatterns = {"/Gestionador"})
 public class Gestionador extends HttpServlet {
 private Connection con;
@@ -36,7 +45,8 @@ private Connection con;
     private ResultSet rs;
     
      public void init(ServletConfig cfg) throws ServletException{
-     con = BD.getConexion();
+         super.init(cfg);
+         con = BD.getConexion();
     }
     /**
      * Processes requests for both HTTP <code>GET</code> and <code>POST</code>
@@ -154,27 +164,89 @@ private Connection con;
         }
         
         if("EJERCICIO LISTO".equals(request.getParameter("btnSubmit"))){
-            String uploadPath = getServletContext().getRealPath("") + File.separator + "uploads";
-            File uploadDir = new File(uploadPath);
-            
-            System.out.println("la url es");
-            System.out.println(uploadPath);
-            if (!uploadDir.exists()) uploadDir.mkdir();
-            
-            for (Part part : request.getParts()) {
-                String fileName = request.getParameter("nombre");
-                part.write(uploadPath + File.separator + fileName);
-            }
+          //  String uploadPath=getServletContext().getRealPath("") + File.separator+ "uploads";
+          
             
             String evaluable=request.getParameter("ejEvaluable");
             String fechaEntrega = request.getParameter("fechaEntrega"); 
+            
+            
             //fecha obligatoria
              if(evaluable != null && (fechaEntrega == null || fechaEntrega.isEmpty())){
                  String errorFecha="Debes introducir una fecha de entrega";
                 request.setAttribute("errorFecha", errorFecha);
                 request.getRequestDispatcher("añadirEjercicio.jsp").forward(request,response);
                 return;
+                
              }
+             if (evaluable != null && fechaEntrega != null && !fechaEntrega.isEmpty()) {
+
+                java.sql.Date fechaEntr = java.sql.Date.valueOf(fechaEntrega);
+
+                java.sql.Date hoy = new java.sql.Date(System.currentTimeMillis());
+
+                 if(fechaEntr.before(hoy)){
+                        String fechaPronto = "La fecha de entrega debe ser a partir de hoy";
+                        request.setAttribute("fechaPronto", fechaPronto);
+                        request.getRequestDispatcher("añadirEjercicio.jsp").forward(request,response);
+                        return;
+                    }
+             }
+             int idEj=0;
+             try{
+                 java.sql.Date fecha=null;
+                 if(evaluable != null && fechaEntrega != null && !fechaEntrega.isEmpty()){
+                     fecha = java.sql.Date.valueOf(fechaEntrega);
+                     String sql = "insert into ejercicio (visibilidad, evaluable, fechaEntrega) values('no',1,?)";
+                     ps = con.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
+                    ps.setDate(1, fecha);
+                }else {
+                    String sql = "insert into ejercicio (visibilidad, evaluable) values ('no', 0)";
+                    ps = con.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
+                }
+                
+                ps.executeUpdate();
+
+                //obtener el ID
+                ResultSet rsId = ps.getGeneratedKeys();
+                if(rsId.next()){
+                    idEj = rsId.getInt(1);
+                }
+
+            } catch(SQLException ex){
+                ex.printStackTrace();
+            }
+            
+            //guarmas en json con el id
+            String uploadPath = "C:\\uploads";
+            File uploadDir = new File(uploadPath);
+            if (!uploadDir.exists()) uploadDir.mkdirs();
+            System.out.println("la url es");
+            System.out.println(uploadPath);
+            if (!uploadDir.exists()) uploadDir.mkdir();
+           
+            try {
+                Part archivoPart = request.getPart("archivo");
+
+                if (archivoPart != null && archivoPart.getSize() > 0) {
+                    String rutaFinal = uploadPath + File.separator + idEj + ".json";
+                    archivoPart.write(rutaFinal);
+
+                    System.out.println("JSON guardado en: " + rutaFinal);
+                    
+                    String update="update ejercicio set ruta=? where id=?";
+                    ps= con.prepareStatement(update);
+                    ps.setString(1,rutaFinal);
+                    ps.setInt(2, idEj);
+                    ps.executeUpdate();
+                    
+                } else {
+                    System.out.println("No se subió archivo");
+                }
+
+            } catch(Exception e){
+                e.printStackTrace();
+            }
             
             //lista de alumnos
             ArrayList<Integer> alumnos = new ArrayList<>();
@@ -183,8 +255,8 @@ private Connection con;
                 st=con.createStatement();
                 rs=st.executeQuery(sql);
                 while(rs.next()){
-                int idA= rs.getInt("id");
-                alumnos.add(idA);
+                    int idA= rs.getInt("id");
+                    alumnos.add(idA);
                 
                 }
             }catch(SQLException ex){
@@ -192,7 +264,7 @@ private Connection con;
             }
             //insertar el ejericico en la tabla de ejericio
             try{
-                
+                /*
                 java.sql.Date fecha = null;
                 int idEj=0;
                 if(evaluable!= null && fechaEntrega != null && !fechaEntrega.isEmpty()){
@@ -212,7 +284,7 @@ private Connection con;
                     ResultSet rsId= ps.getGeneratedKeys();
                     if(rsId.next()){
                         idEj=rsId.getInt(1);
-                    }
+                    }*/
                     
                     //insertar el ejercicio en usuEjer
                     String sql2="insert into usuEjer(idUsu, idEj, completado) values (?,?,0)";
@@ -230,8 +302,91 @@ private Connection con;
             response.sendRedirect("Gestionador?submit=EJERCICIOS");
             return;
         }
-            
+        
+        if("completar".equals(request.getParameter("accion"))){
+
+            int idEj = Integer.parseInt(request.getParameter("id"));
+            int idUsu = (Integer) session.getAttribute("aId");
+
+            try{
+                String sql = "UPDATE usuEjer SET completado=1 WHERE idUsu=? AND idEj=?";
+                ps = con.prepareStatement(sql);
+                ps.setInt(1, idUsu);
+                ps.setInt(2, idEj);
+                ps.executeUpdate();
+            }catch(Exception e){
+                e.printStackTrace();
+            }
+
+            return;
+        }
+        
+        if("siguiente".equals(request.getParameter("accion"))){
+
+            int idActual = Integer.parseInt(request.getParameter("id"));
+
+            try{
+                String sql = "SELECT id FROM ejercicio WHERE id > ? ORDER BY id ASC LIMIT 1";
+                ps = con.prepareStatement(sql);
+                ps.setInt(1, idActual);
+                rs = ps.executeQuery();
+
+                if(rs.next()){
+                    int siguiente = rs.getInt("id");
+                    response.sendRedirect("detalleEjercicio.jsp?id=" + siguiente);
+                } else {
+                    //response.sendRedirect("Gestionador?submit=EJERCICIOS");
+                    System.out.println("NO HAY SIGUIENTE EJERCICIO");
+                    response.sendRedirect("tablaEjercicio.jsp");
+                    
+                }
+                  return;
+
+            }catch(Exception e){
+                e.printStackTrace();
+            }
+
+            return;
+        }
+        /*
+        if ("guardarSolucion".equals(request.getParameter("accion"))) {
+
+            int idEj = Integer.parseInt(request.getParameter("id"));
+            int idUsu = (Integer) session.getAttribute("aId");
+
+            try {
+                // leer el JSON que viene en el body
+                StringBuilder sb = new StringBuilder();
+                String line;
+                BufferedReader reader = request.getReader();
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line);
+                }
+
+                String json = sb.toString();
+
+                // ⚠️ IMPORTANTE: guardar solo la parte "solucion"
+                // (si quieres puedes guardar todo el JSON también)
+
+                String sql = "UPDATE usuEjer SET solucion=? WHERE idUsu=? AND idEj=?";
+                ps = con.prepareStatement(sql);
+                ps.setString(1, json);
+                ps.setInt(2, idUsu);
+                ps.setInt(3, idEj);
+                ps.executeUpdate();
+
+                System.out.println("Solución guardada correctamente");
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+
+            return;
+        }*/
+
+        
         int idUsu= (Integer) session.getAttribute("aId");
+        
         try{
             String sql="Select rol from usuario where id=?";
             ps=con.prepareStatement(sql);

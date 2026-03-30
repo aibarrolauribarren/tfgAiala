@@ -775,10 +775,67 @@ class Mapper {
     }
 
     static mapSpecializations (baseER, studentRelational, runningRelational) {
+        for (const spec of baseER.specializations){
+            const superName = spec.superclassEntityName
+            const superRel = studentRelational.relations.find(r => r.name == superName)
+            
+            //comprobas si existe la superClase
+            if (superRel == null){
+                return { isCorrect:false, message: Mapper.msg('MISSING_SUPERCLASS_RELATION', [superName])}
+            }
+            
+            const superPK = superRel.attribute.filter(a=> a.isPK)
+            
+            if(superPK.length == 0){
+                return {isCorrect:false, message: Mapper.msg ('MISSING_PK', [subName])}
+                
+            }
+            
+            //comprobar subclases
+            for(const subName of subName){
+                const subRel = studentRelational.relations.find(r => r.name == subName)
+            
+                // complorbar que existe la subclase
+                if(subRell == null){
+                    return {isCorrect:false, message:Mapper.msg('MISSING_SUBCLASS_RELATION',[subName])}
+                }
+                //comprobar que las subclases tienen la PK de la superclase
+                for (const pkAttr of superPK){
+                    const attr = subRel.attributes.fins(a => a.name == pkAttr.name)
+
+                    if (attr == null){
+                        return{isCorrect:false, message: Mapper.msg('MISSING_PK_IN_SUBLASS', [subName, pkAttr.name])}
+                    }
+
+                    //tiene que ser PK en la subclase
+                    if(!attr.isPK){
+                        return{isCorrect:false, message: Mapper.msg('PK_NOT_MARKED_IN_SUBCLASS', [subName, pkAttr.name])}
+                    }
+                }
+
+                //FK de la superclase
+                const fk = subRel.fks.find(fk => fk.targetRelation == superName)
+
+                if(fk ==null){
+                    return{isCorrect: false, message: Mapper.msg('MISSING_FK_IN_SUBCLASS', [subName, subName])}
+                }
+
+                // comprobar atributos
+                for(const pkAttr of superPK){
+                    if(!fk.attributes.includes(pkAttr.name)){
+                        return {isCorrect:false, message: Mapper.msg('WRONG_FK_IN_SUBCLASS', [subName, pkAttr.name])}
+                    }
+                } 
+            }
+            //si todo esta bien
+            const pos = baseER.spcializations.indexOf(spec)
+            baseER.specializations.splice(pos,1)
+        }
         return null
     }
 
     static mapCategories (baseER, studentRelational, runningRelational) {
+        
         return null
     }
 }

@@ -92,5 +92,25 @@ export const messages = {
     },
     MORE_NARY_RELATION_FK_ATTRIBUTES: {
         'es-ES': 'En la relación $0, la FK que hace referencia a $1 tiene atributos de más'
+    },
+    MISSING_SUPERCLASS_RELATION: {
+        'es-ES': 'Falta la relacion de la superclase $0'
+    },
+    MISSING_SUBCLASS_RELATION: {
+        'es-ES': 'Falta la relacion de la subclase $0'
+    },
+    MISSING_PK_IN_SUBCLASS: {
+        'es-ES': 'Falta el atributo de clave primaria $1 en la subclase $0'
+    },
+    PK_NOT_MARKED_IN_SUBCLASS: {
+        'es-ES': 'El atributo $1 debe ser clave primaria en la subclase $0'
+    },
+    MISSING_FK_IN_SUBCLASS: {
+        'es-ES': 'Falta la clave foranea en $0 hacia $1'
+    },
+    WRONG_FK_IN_SUBCLASS: {
+        'es-ES': 'La clave foranea en $0 no incluye el atributo $1'
     }
+    
+    
 }

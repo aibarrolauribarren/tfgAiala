@@ -110,6 +110,40 @@ export const messages = {
     },
     WRONG_FK_IN_SUBCLASS: {
         'es-ES': 'La clave foranea en $0 no incluye el atributo $1'
+    },
+    DISJOINT_SPECIALIZATION_ERROR: {
+    'es-ES': 'La especialización es disjunta, pero la subclase $0 participa en múltiples subclases'
+    },
+    TOTAL_SPECIALIZATION_ERROR: {
+        'es-ES': 'La especialización de $0 es total y no se han definido todas las subclases'
+    },
+
+    MISSING_CATEGORY_RELATION: {
+        'es-ES': 'Falta la relación de la categoría $0'
+    },
+    CATEGORY_UNION_ERROR: {
+        'es-ES': 'La PK de la categoría $0 no corresponde a ninguna superclase (tipo U)'
+    },
+    CATEGORY_DISJOINT_ERROR: {
+        'es-ES': 'La categoría $0 es disjunta y la PK no corresponde exactamente a una superclase'
+    },
+    CATEGORY_COMMON_ERROR: {
+        'es-ES': 'La categoría $0 debe incluir las PK de todas las superclases (tipo C)'
+    },
+    WRONG_FK_IN_CATEGORY: {
+        'es-ES': 'En la categoría $0, la FK no incluye el atributo $1'
+    },
+    CATEGORY_DISJOINT_FK_ERROR: {
+        'es-ES': 'La categoría $0 es disjunta y tiene múltiples FKs'
+    },
+    CATEGORY_COMMON_FK_ERROR: {
+        'es-ES': 'La categoría $0 debe tener FKs a todas las superclases'
+    },
+    CATEGORY_UNION_FK_ERROR: {
+        'es-ES': 'La categoría $0 debe tener al menos una FK a una superclase'
+    },
+    CATEGORY_TOTAL_ERROR: {
+        'es-ES': 'La categoría $0 es total y debe tener al menos una FK'
     }
     
     

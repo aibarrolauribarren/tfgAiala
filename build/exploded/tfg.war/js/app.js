@@ -59,7 +59,7 @@ export class App {
         background: { color: 'white' },
         cellViewNamespace: namespace,
         guard: (e) => e.target.getAttribute('contenteditable') != null,
-        interactive: false
+        interactive: true
         });
         graph.fromJSON(JSON.parse(data))
         let cont = document.querySelector('#erd_container')
@@ -69,6 +69,12 @@ export class App {
         //  else addTools(c)
         //})
 
+        cells.forEach((c) => {
+            if(c.prop('type') === 'erd.InheritanceLink') {
+              const view = paper.findViewByModel(c)
+              if(view) view.manageTools()
+            }
+          })
         // Redimensionar contenedor
         let dim = cells.reduce((m, c) => {
           let view = paper.findViewByModel(c)

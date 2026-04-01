@@ -37,7 +37,7 @@ class Mapper {
     }
 
     static getRelationPK (runningRelational, relationName) {
-        const rel = runningRelational.find((r) => r.name === relationName)
+        const rel = runningRelational.relations.find((r) => r.name === relationName)
         if (rel == null) return null
         const pkAttr = rel.attributes.filter((a) => a.isPK)
         return pkAttr
@@ -59,7 +59,8 @@ class Mapper {
         const attributes = []
         for(const a of attribute.subattributes){
             if (a.subattributes != null && a.subattributes.length > 0){
-                attributes.concat(Mapper.getLeafAttributes(a))
+                //attributes.concat(Mapper.getLeafAttributes(a))
+                attributes.push(...Mapper.getLeafAttributes(a))
             } 
             else{
                 attributes.push(a)
@@ -87,7 +88,8 @@ class Mapper {
                 return {isCorrect: false, message: Mapper.msg('MISSING_RELATION',[entity.name])}
             }
             let candidateKeys = []
-            for(const attr of entity.attributes){
+            //for(const attr of entity.attributes){
+            for(const attr of [...entity.attributes]){
                 const pos = entity.attributes.findIndex((a) => a.name == attr.name)
                 if(attr.isDerivated){
                     const studentAttribute = studentRelation.attributes.find((a) => a.name == attr.name)
@@ -144,7 +146,7 @@ class Mapper {
             }
             else if(candidateKeys.length > 1){
                 const studentPK = studentRelation.attributes.filter((a) => a.isPK)
-                if (studentPK == null){
+                if (studentPK.length == 0){
                     return {isCorrect: false, message: Mapper.msg('MISSING_PK',[studentRelation.name])}
                 }
                 const usedPK = candidateKeys.find((c) => {
@@ -234,7 +236,7 @@ class Mapper {
             let candidateKeys = []
             for(const attr of entity.attributes){
                 const pos = entity.attributes.findIndex((a) => a.name == attr.name)
-                if(attr.isDerivate){
+                if(attr.isDerivated){
                     const studentAttribute = studentRelation.attributes.find((a) => a.name == attr.name)
                     if (studentAttribute != null){
                         return {isCorrect: false, errors: [messages.DERIVATE_ATTRIBUTE_INCLUDED.es]}
@@ -359,12 +361,12 @@ class Mapper {
                 }
 
                 const getRegularLeafAttributes = (multivaluedAttribute) => {
-                    const leaves = []
+                    let leaves = []
                     if (multivaluedAttribute.subattributes == null || multivaluedAttribute.subattributes.length == 0){
                         return [multivaluedAttribute]
                     }
                     for(const ma of multivaluedAttribute.subattributes) {
-                        if(ma.isDerivate) continue
+                        if(ma.isDerivated) continue
                         // todo -> tener en cuenta otros tipos de atributos, viendo qué es posible y qué no
                         leaves = leaves.concat(getRegularLeafAttributes(ma))
                     }
@@ -507,7 +509,7 @@ class Mapper {
         for(let i=0;i<pkRelations.length;i++){
             const r = relations[i]
             const pkAttrs = pkRelations[i]
-            const studentFK = studentNaryRelation.fks.find((fk) => fk.targetRelation == r.name && fk.checked == null || fk.checked == false)
+            const studentFK = studentNaryRelation.fks.find((fk) => fk.targetRelation == r.name && (fk.checked == null || fk.checked == false))
             if (studentFK == null) {
                 return {isCorrect: false, message: Mapper.msg('MISSING_NARY_RELATION_FK',[relationship.label, r.name])}
             }
@@ -777,34 +779,39 @@ class Mapper {
     static mapSpecializations (baseER, studentRelational, runningRelational) {
         for (const spec of baseER.specializations){
             const superName = spec.superclassEntityName
+            const subNames = spec.subclassEntityNames
             const superRel = studentRelational.relations.find(r => r.name == superName)
-            
+            const isTotal = spec.isTotal
+            const isOverlapping = spec.allowsOverlapping //true = O, false = d
             //comprobas si existe la superClase
+            
             if (superRel == null){
                 return { isCorrect:false, message: Mapper.msg('MISSING_SUPERCLASS_RELATION', [superName])}
             }
             
-            const superPK = superRel.attribute.filter(a=> a.isPK)
+            const superPK = superRel.attributes.filter(a=> a.isPK)
             
             if(superPK.length == 0){
-                return {isCorrect:false, message: Mapper.msg ('MISSING_PK', [subName])}
+                return {isCorrect:false, message: Mapper.msg ('MISSING_PK', [superName])}
                 
             }
             
             //comprobar subclases
-            for(const subName of subName){
+            let validSubclassCount =0
+            for(const subName of subNames){
                 const subRel = studentRelational.relations.find(r => r.name == subName)
             
                 // complorbar que existe la subclase
-                if(subRell == null){
+                if(subRel == null){
                     return {isCorrect:false, message:Mapper.msg('MISSING_SUBCLASS_RELATION',[subName])}
                 }
                 //comprobar que las subclases tienen la PK de la superclase
                 for (const pkAttr of superPK){
-                    const attr = subRel.attributes.fins(a => a.name == pkAttr.name)
+                    const attr = subRel.attributes.find(a => a.name == pkAttr.name)
 
                     if (attr == null){
-                        return{isCorrect:false, message: Mapper.msg('MISSING_PK_IN_SUBLASS', [subName, pkAttr.name])}
+                        return{isCorrect:false, 
+                            message: Mapper.msg('MISSING_PK_IN_SUBLASS', [subName, pkAttr.name])}
                     }
 
                     //tiene que ser PK en la subclase
@@ -826,16 +833,187 @@ class Mapper {
                         return {isCorrect:false, message: Mapper.msg('WRONG_FK_IN_SUBCLASS', [subName, pkAttr.name])}
                     }
                 } 
+                validSubClassCount++
+            }
+            
+            //D vs O
+            if(!isOverlapping){
+                //cada subclase debe tener solo una FK a la superclase
+                for (const subName of subNames){
+                    const subRel = studentRelational.relations.find(r => r.name == subName)
+                    
+                    const fkToSuper = subRel.fks.filter(fk => fk.targetRelation == superName)
+                    
+                    if(fkToSuper.length>1){
+                        return{
+                            isCorrect:false,
+                            message: Mapper.msg('DISJOINT_SPECIALIZATION_ERROR', [subName])
+                        }
+                    }
+                }
+            }
+            
+            //total o parcial
+            if(isTotal){
+                if(validSubClassCount != subNames.length){
+                    return{
+                        isCorrect:false,
+                        message:Mapper.msg('TOTAL_SPECIALIZATION_ERROR', [superName])
+                    }
+                }
             }
             //si todo esta bien
-            const pos = baseER.spcializations.indexOf(spec)
+            const pos = baseER.specializations.indexOf(spec)
             baseER.specializations.splice(pos,1)
         }
         return null
     }
 
     static mapCategories (baseER, studentRelational, runningRelational) {
-        
+        for(const cat of baseER.categories){
+            const catName = cat.categoryEntityName
+            const superNames = cat.superclassEntityNames
+            const type = cat.type || 'U'
+            const isTtal=cat.isTotal
+            
+            const catRel = studentRelational.relations.find(r=> r.name==catName)
+            
+            //existe categoria
+            if(catRel == null){
+                return {isCorrect:false, message: Mapper.msg('MISSIN_CATEGORY_RELATION', [catName])}
+            }
+            
+            //obtener superclases y sus PK
+            const superRels=[]
+            
+            for(const superName of superNames){
+                const superRel=studentRelational.relations.find(r => r.name == superName)
+                if(superRel ==null){
+                    return {isCorrect:false, message:Mapper.msg('MISSING_SUPERCLASS_RELATION', [superName])}
+                }
+                
+                const superPK = superRel.attributes.filter(a => a.isPK)
+                
+                if(superPK.length == 0){
+                    return {isCorrect:false, message:Mapper.msg('MISSING_PK', [superName])}
+                }
+                
+                superRels.push({name:superName, pk: superPK})
+            }
+            
+            //PK de la categoria
+            const catPK = catRel.attributes.filter(a=> a.isPK)
+            
+            if(catPK.length == 0){
+                 return {isCorrect:false, message: Mapper.msg('MISSING_PK', [catName])}
+            }
+            
+            
+            //diferencias c,d,u
+            let validPK = false
+            if(type=='U'){
+                for (const superRel of superRels){
+                    const match = superRel.pk.every(pkAttr => catPK.find(a => a.name == pkAttr.name) != null) && superRel.pk.length == catPK.length
+                    
+                    if(match){
+                        validPK = true
+                        break
+                    }
+                }
+                if (!validPK){
+                     return {isCorrect:false, message:Mapper.msg('WRONG_PK', [catName])}   
+                }
+            }
+            
+            else if (type=='D'){
+                let matchCount =0
+                for(const superRel of superRels){
+                    const match = superRel.pk.every(pkAttr => catPK.find(a => a.name == pkAttr.name) != null) && superRel.pk.length == catPK.length
+                    if(match){
+                        matchCount++
+                    }
+                }
+                if(matchCount !==1){
+                    return{
+                        isCorrect:false,
+                        message: Mapper.msg('CATEGORY_DISJOINT_ERROR', [catName])
+                    }
+                }
+                validPK=true
+            }
+            else if(type=='C'){
+                //deben incluir todas las PKs
+                const allPK = superRels.flatMap(s=> s.pk)
+                
+                const match = allPK.every(pkAttr => catPK.find (a => a.name == pkAttr.name) !=null)
+                
+                if(!match || catPK.length != allPK.length){
+                    return{
+                        isCorrect:false,
+                        message: Mapper.msg('CATEGORY_COMMON_ERROR', [catName])
+                    }
+                }
+                
+                validPK = true
+            }
+            
+            //validar FK
+            let fkCount=0
+            
+            for(const superRel of superRels){
+                const fk = catRel.fks.find(fk => fk.targetRelation == superRel.name)
+                
+                if(fk){
+                    fkCount++
+                    for(const pkAttr of superRel.pk){
+                        if(!fk.attributes.includes(pkAttr.name)){
+                            return{
+                                isCorrect:false,
+                                message:Mapper.msg('WRONG_FK_IN_CATEGORY', [catName, pkAttr.name])
+                            }
+                        }
+                    }
+                }
+            }
+            
+            //segun el tipo
+            if(type =='D' && fkCount>1){
+               return{
+                   isCorrect:false,
+                   message: Mapper.msg('CATEGORY_DISJOINT_FK_ERROR', [catName])
+               }
+            }
+            if(type =='C' && fkCount!= superRels.length){
+               return{
+                   isCorrect:false,
+                   message: Mapper.msg('CATEGORY_COMMON_FK_ERROR', [catName])
+               }
+            }
+            
+            if(type =='U' && fkCount==0){
+               return{
+                   isCorrect:false,
+                   message: Mapper.msg('CATEGORY_UNION_FK_ERROR', [catName])
+               }
+            }
+            
+            //total o parcial
+            if(isTotal){
+                //debe haber FK
+                if(fkCount ==0){
+                    return {
+                      isCorrect:false,
+                      message: Mapper.msg('CATEGORY_TOTAL_ERROR', [catName])
+                    }
+                }
+            }
+            
+            //eliminar categoria
+            
+            const pos = baseER.categories.indexOf(cat)
+            baseER.categories.splice(pos,1)
+            
+        }
         return null
     }
 }
@@ -854,7 +1032,7 @@ entities: [
                 name: X,
                 isKey: true/false,
                 isMultivalued: true/false,
-                isDerivate: true/false,
+                isDerivated: true/false,
                 isPartialKey: true/false,
                 subattributes: [
                     {
@@ -894,7 +1072,9 @@ categories: [
         categoryEntityName: X,
         superclassEntityNames: [X, Y, ...],
         isTotal: true/false
+        type: 'C' | 'D' |'U'
     }
+
 ]
 }
 
@@ -923,4 +1103,5 @@ categories: [
 }
 
 */
+
 

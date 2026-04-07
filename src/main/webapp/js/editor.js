@@ -55,8 +55,188 @@ class Editor {
     }
     return null
   }
-  cleanERDiagram (erdFileContent) {
+  cleanERDiagram(erdFileContent) {
+    const erd = { entities: [], relationships: [], specializations: [], categories: [] };
+
+    // 1. PASO PREVIO: Extraer herencias usando los enlaces (InheritanceLink) y puntos (ConnectionPoint)
+    // Esto es necesario porque en tu JSON la información está repartida en varios objetos.
+    const connectionPoints = erdFileContent.cells.filter(c => c.type === 'erd.ConnectionPoint');
+    const inheritanceLinks = erdFileContent.cells.filter(c => c.type === 'erd.InheritanceLink');
+
+    connectionPoints.forEach(cp => {
+        if (cp.connectionType === 'specialization') {
+            const spec = {
+                superclassEntityName: "",
+                subclassEntityNames: [],
+                isTotal: cp.isTotal || false,
+                id: cp.id
+            };
+
+            // Encontrar la superclase (el link que va del Entity al Punto)
+            const upLink = inheritanceLinks.find(l => l.target.id === cp.id && l.linkType === 'connection2superclass');
+            if (upLink) spec.superclassEntityName = upLink.source.labelText;
+
+            // Encontrar las subclases (los links que van del Punto a las Entities)
+            const downLinks = inheritanceLinks.filter(l => l.target.id === cp.id && l.linkType === 'connection2subclass');
+            spec.subclassEntityNames = downLinks.map(l => l.source.labelText);
+
+            erd.specializations.push(spec);
+        }
+    });
+
+    // 2. BUCLE PRINCIPAL: Limpiar y organizar Entidades, Atributos y Relaciones
+    let i = 0;
+    while (erdFileContent.cells.length > 0) {
+        i = i % erdFileContent.cells.length;
+        const el = erdFileContent.cells[i];
+
+        // Eliminamos lo que ya procesamos arriba o lo que no es necesario para el Mapper
+        if (el.type === 'standard.Link' || el.type === 'erd.Attribute' || 
+            el.type === 'erd.Relation' || el.type === 'erd.ConnectionPoint' || 
+            el.type === 'erd.InheritanceLink') {
+            erdFileContent.cells.splice(i, 1);
+        } 
+        else if (el.type === 'erd.Entity') {
+            let entity = erd.entities.find((e) => e.id === el.id);
+            if (entity == null) {
+                entity = { name: el.labelText, isWeak: el.isWeak, attributes: [], id: el.id };
+                erd.entities.push(entity);
+            }
+            erdFileContent.cells.splice(i, 1);
+        } 
+        else if (el.type === 'erd.AttributeLink') {
+            let targetType = el.target.type;
+            let originType = el.source.type;
+
+            if ((targetType == 'erd.Entity' && originType == 'erd.Attribute') || (originType == 'erd.Entity' && targetType == 'erd.Attribute')) {
+                const entityEl = targetType == 'erd.Entity' ? el.target : el.source;
+                const attrEl = targetType == 'erd.Attribute' ? el.target : el.source;
+                let entity = erd.entities.find((e) => e.id === entityEl.id);
+                if (entity == null) {
+                    entity = { name: entityEl.labelText, isWeak: entityEl.isWeak, attributes: [], id: entityEl.id };
+                    erd.entities.push(entity);
+                }
+                let attr = entity.attributes.find((a) => a.id == attrEl.id);
+                if (attr == null) {
+                    attr = {
+                        name: attrEl.labelText,
+                        isMultivalued: attrEl.isMultivaluated,
+                        isDerivated: attrEl.isDerivated,
+                        isKey: attrEl.isKey,
+                        isPartialKey: attrEl.isPartialKey,
+                        subattributes: [],
+                        id: attrEl.id
+                    };
+                    entity.attributes.push(attr);
+                }
+                erdFileContent.cells.splice(i, 1);
+            } 
+            else if ((targetType == 'erd.Relation' && originType == 'erd.Attribute') || (originType == 'erd.Relation' && targetType == 'erd.Attribute')) {
+                const relEl = targetType == 'erd.Relation' ? el.target : el.source;
+                const attrEl = targetType == 'erd.Attribute' ? el.target : el.source;
+                let relationship = erd.relationships.find((r) => r.id === relEl.id);
+                if (relationship == null) {
+                    relationship = { id: relEl.id, participants: [], label: relEl.labelText, isIdentifier: relEl.isIdentifier, attributes: [] };
+                    erd.relationships.push(relationship);
+                }
+                let attr = relationship.attributes.find((a) => a.id === attrEl.id);
+                if (attr == null) {
+                    attr = {
+                        name: attrEl.labelText,
+                        isMultivalued: attrEl.isMultivaluated,
+                        isDerivated: attrEl.isDerivated,
+                        isKey: attrEl.isKey,
+                        isPartialKey: attrEl.isPartialKey,
+                        subattributes: [],
+                        id: attrEl.id
+                    };
+                    relationship.attributes.push(attr);
+                }
+                erdFileContent.cells.splice(i, 1);
+            } 
+            else if (targetType == 'erd.Attribute' && originType == 'erd.Attribute') {
+                const sourceAttr = Editor.searchAttribute(erd, el.source.id);
+                const targetAttr = Editor.searchAttribute(erd, el.target.id);
+                let parentAttrEl, childAttrEl;
+                if (sourceAttr != null) {
+                    parentAttrEl = el.source; childAttrEl = el.target;
+                } else if (targetAttr != null) {
+                    parentAttrEl = el.target; childAttrEl = el.source;
+                } else {
+                    i++; continue;
+                }
+                let subAttr = {
+                    name: childAttrEl.labelText,
+                    isMultivalued: childAttrEl.isMultivaluated,
+                    isDerivated: childAttrEl.isDerivated,
+                    isKey: childAttrEl.isKey,
+                    isPartialKey: childAttrEl.isPartialKey,
+                    subattributes: [],
+                    id: childAttrEl.id
+                };
+                const parentAttr = sourceAttr != null ? sourceAttr : targetAttr;
+                parentAttr.subattributes.push(subAttr);
+                erdFileContent.cells.splice(i, 1);
+            }
+        } 
+        else if (el.type === 'erd.RelationshipLink') {
+            let targetType = el.target.type;
+            let originType = el.source.type;
+            const relEl = targetType == 'erd.Relation' ? el.target : el.source;
+            const entityEl = targetType == 'erd.Entity' ? el.target : el.source;
+            let relationship = erd.relationships.find((r) => r.id === relEl.id);
+            if (relationship == null) {
+                relationship = { id: relEl.id, participants: [], label: relEl.labelText, isIdentifier: relEl.isIdentifier, attributes: [] };
+                erd.relationships.push(relationship);
+            }
+            let participant = relationship.participants.find((p) => p.id === entityEl.id);
+            if (participant == null) {
+                participant = {
+                    entityName: entityEl.labelText,
+                    id: entityEl.id,
+                    minCardinality: el.minCard,
+                    maxCardinality: el.maxCard
+                };
+                relationship.participants.push(participant);
+            }
+            erdFileContent.cells.splice(i, 1);
+        } 
+        else {
+            // SEGURIDAD: Si hay cualquier otro tipo (como la categoría que aún no mapeamos así), 
+            // lo borramos para que el bucle no sea infinito y el diagrama cargue.
+            erdFileContent.cells.splice(i, 1);
+        }
+    }
+    return erd;
+}
+  /*cleanERDiagram (erdFileContent) {
     const erd = {entities: [], relationships: [], specializations: [], categories: []}
+    // 2. Procesar Puntos de Conexión (El círculo de la herencia)
+    const connectionPoints = erdFileContent.cells.filter(c => c.type === 'erd.ConnectionPoint');
+    const inheritanceLinks = erdFileContent.cells.filter(c => c.type === 'erd.InheritanceLink');
+
+    connectionPoints.forEach(cp => {
+        if (cp.connectionType === 'specialization') {
+            const spec = {
+                superclassEntityName: "",
+                subclassEntityNames: [],
+                isTotal: cp.isTotal || false,
+                id: cp.id
+            };
+
+            // Buscar la superclase conectada a este punto
+            const upLink = inheritanceLinks.find(l => l.target.id === cp.id && l.linkType === 'connection2superclass');
+            if (upLink) spec.superclassEntityName = upLink.source.labelText;
+
+            // Buscar las subclases conectadas
+            const downLinks = inheritanceLinks.filter(l => l.target.id === cp.id && l.linkType === 'connection2subclass');
+            spec.subclassEntityNames = downLinks.map(l => l.source.labelText);
+
+            erd.specializations.push(spec);
+        }
+    });
+        
+        
     let i = 0
     while (erdFileContent.cells.length > 0){
       i = i % erdFileContent.cells.length
@@ -178,6 +358,27 @@ class Editor {
         }
         erdFileContent.cells.splice(i,1)
       }
+        else if (el.type === 'erd.Specialization') {
+          const specialization = {
+              superclassEntityName: el.superclass, // Asegúrate que 'superclass' es el atributo del JSON de JointJS
+              subclassEntityNames: el.subclasses || [], 
+              isTotal: el.isTotal || false,
+              allowsOverlapping: el.isOverlapping || false,
+              id: el.id
+          };
+          erd.specializations.push(specialization);
+          erdFileContent.cells.splice(i, 1);
+        }
+        else if (el.type === 'erd.Category') {
+          const category = {
+              categoryEntityName: el.categoryName,
+              superclassEntityNames: el.superclasses || [],
+              isTotal: el.isTotal || false,
+              id: el.id
+          };
+          erd.categories.push(category);
+          erdFileContent.cells.splice(i, 1);
+        }
     }
     return erd
     // target
@@ -242,7 +443,7 @@ class Editor {
 
     */
 
-  }
+  }*/
   showMappingResult (result) {
     let elClass, backgroundColor, textColor,imgSrc
     if (result.isCorrect){

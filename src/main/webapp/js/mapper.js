@@ -10,13 +10,13 @@ class Mapper {
         while(baseER.entities.length > 0 || baseER.relationships.length > 0 || baseER.specializations.length > 0 || baseER.categories.length > 0){
             result = Mapper.mapStrongEntities(baseER, studentRelational, runningRelational)
             if (result != null) return result
+            result = Mapper.mapSpecializations(baseER, studentRelational, runningRelational)
+            if (result != null) return result
             result = Mapper.mapWeakEntities(baseER, studentRelational, runningRelational)
             if (result != null) return result
             result = Mapper.mapRelationships(baseER, studentRelational, runningRelational)
             if (result != null) return result
             result = Mapper.mapMultivaluedAttributes(baseER, studentRelational, runningRelational)
-            if (result != null) return result
-            result = Mapper.mapSpecializations(baseER, studentRelational, runningRelational)
             if (result != null) return result
             result = Mapper.mapCategories(baseER, studentRelational, runningRelational)
             if (result != null) return result
@@ -88,8 +88,7 @@ class Mapper {
                 return {isCorrect: false, message: Mapper.msg('MISSING_RELATION',[entity.name])}
             }
             let candidateKeys = []
-            //for(const attr of entity.attributes){
-            for(const attr of [...entity.attributes]){
+            for(const attr of entity.attributes){
                 const pos = entity.attributes.findIndex((a) => a.name == attr.name)
                 if(attr.isDerivated){
                     const studentAttribute = studentRelation.attributes.find((a) => a.name == attr.name)
@@ -777,7 +776,47 @@ class Mapper {
     }
 
     static mapSpecializations (baseER, studentRelational, runningRelational) {
-        for (const spec of baseER.specializations){
+        for (let i = 0; i < baseER.specializations.length; i++) {
+        const spec = baseER.specializations[i];
+        
+        // 1. Buscamos la tabla de la superclase en lo ya validado
+        const superTable = runningRelational.relations.find(r => r.name === spec.superclassEntityName);
+        if (!superTable) continue; // Si la superclase no se ha validado aún, esperamos
+
+        const pkSuperNames = superTable.attributes.filter(a => a.isPK).map(a => a.name);
+        if (pkSuperNames.length === 0) continue;
+
+        // 2. Validamos cada subclase
+        for (const subName of spec.subclassEntityNames) {
+            const studentSubTable = studentRelational.relations.find(r => r.name === subName);
+            
+            if (!studentSubTable) {
+                return { isCorrect: false, message: `Falta la tabla para la subclase: ${subName}` };
+            }
+
+            // REGLA: ¿La PK de la subclase es igual a la de la superclase?
+            const subPKs = studentSubTable.attributes.filter(a => a.isPK).map(a => a.name);
+            const hasSamePK = pkSuperNames.every(name => subPKs.includes(name));
+
+            if (!hasSamePK) {
+                return { isCorrect: false, message: `La subclase ${subName} debe tener la misma Clave Primaria que ${spec.superclassEntityName}` };
+            }
+
+            // REGLA: ¿Existe la FK de la subclase a la superclase?
+            // En studentRelational, fks.targetRelation es un String (por el minimizeSchema del editor)
+            const studentFK = studentSubTable.fks.find(f => f.targetRelation === spec.superclassEntityName);
+            if (!studentFK) {
+                return { isCorrect: false, message: `Falta la Clave Ajena en ${subName} apuntando a ${spec.superclassEntityName}` };
+            }
+        }
+
+        // Si todo está OK para esta jerarquía, la eliminamos del array pendiente
+        baseER.specializations.splice(i, 1);
+        return null; 
+    }
+    return null;
+        
+        /*for (const spec of baseER.specializations){
             const superName = spec.superclassEntityName
             const subNames = spec.subclassEntityNames
             const superRel = studentRelational.relations.find(r => r.name == superName)
@@ -866,7 +905,7 @@ class Mapper {
             const pos = baseER.specializations.indexOf(spec)
             baseER.specializations.splice(pos,1)
         }
-        return null
+        return null*/
     }
 
     static mapCategories (baseER, studentRelational, runningRelational) {

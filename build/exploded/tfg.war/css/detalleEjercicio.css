@@ -94,27 +94,49 @@ input[name="btnsubmit"][value="TABLA EJERCICIOS"] {
 }
 
 .attributeActionsContainer {
-  position: absolute;
+ /* position: absolute;
   display: flex;
   flex-direction: row;
   gap:1em;
-  padding-bottom: 0.4em;
+  padding-bottom: 0.4em;*/
+  position: absolute;
+    top: 50%;
+    left: 100%;        /* opcional: a la derecha del atributo */
+    transform: translateY(-50%);  /* centra verticalmente */
+    display: flex;
+    gap: 0.5em;
+    align-items: center;
 }
 
 .relationActionsContainer{
-  position: absolute;
+ /* position: absolute;
   display: flex;
   flex-direction: row;
   gap:1em;
-  padding-bottom: 0.4em;
+  padding-bottom: 0.4em;*/
+ position: absolute;
+  display: flex;
+  flex-direction: row;
+  gap: 0.5em;          /* opcional, ajusta el espacio entre botones */
+  align-items: center; /* centra verticalmente todos los botones */
+  padding-bottom: 0.2em; /* opcional */
 }
 
 .actionButton {
-  width: 1em;
+ /* width: 1em;
   height: 1em;
   text-align: center;
   cursor: pointer;
-  box-sizing: content-box;
+  box-sizing: content-box;*/
+    width: 2em;               /* contenedor más grande */
+    height: 2em;
+    display: flex;            /* centra el contenido */
+    justify-content: center;  /* centro horizontal */
+    align-items: center;      /* centro vertical */
+    font-size: 1.5em;         /* tamaño del emoji */
+    line-height: 1;           /* evita que se mueva hacia arriba */
+    box-sizing: border-box;
+    cursor: pointer;
 }
 
 .actionButton:hover{
@@ -295,3 +317,4 @@ input[name="btnsubmit"][value="TABLA EJERCICIOS"] {
   border-radius: 10px 10px 10px 10px;
 }
 
+ 

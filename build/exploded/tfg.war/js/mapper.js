@@ -1,28 +1,135 @@
 import {messages} from "./messages.js"
 
 class Mapper {
-    static checkSolution (baseER0, studentRelational) {
-        const baseER = JSON.parse(JSON.stringify(baseER0))
-        let result
-        const runningRelational = {
-            relations: []
+    /*static checkSolution(baseER0, studentRelational) {
+    try {
+        const baseER = JSON.parse(JSON.stringify(baseER0));
+        const runningRelational = { relations: [] };
+        let result = null;
+        let safetyCounter = 0;
+
+        while (baseER.entities.length > 0 || baseER.relationships.length > 0 || 
+               baseER.specializations.length > 0 || baseER.categories.length > 0) {
+           
+            let entBefore = baseER.entities.length;
+            let relBefore = baseER.relationships.length;
+            let specBefore = baseER.specializations.length;
+
+            result = Mapper.mapStrongEntities(baseER, studentRelational, runningRelational);
+            if (result != null) return result; // Aquí es donde devolverá "Falta el atributo A5..."
+
+            result = Mapper.mapSpecializations(baseER, studentRelational, runningRelational);
+            if (result != null) return result;
+            
+            if (safetyCounter++ > 100) {
+                return { isCorrect: false, message: "Error: Bucle infinito detectado en Mapper." };
+            }
+
+            let changed = false;
+
+            // --- ENTIDADES FUERTES ---
+            //let entBefore = baseER.entities.length;
+            result = Mapper.mapStrongEntities(baseER, studentRelational, runningRelational);
+            if (result != null) return result;
+            if (baseER.entities.length < entBefore) changed = true;
+
+            // --- ESPECIALIZACIONES ---
+           // let specBefore = baseER.specializations.length;
+            result = Mapper.mapSpecializations(baseER, studentRelational, runningRelational);
+            if (result != null) return result;
+            if (baseER.specializations.length < specBefore) changed = true;
+
+            // --- ENTIDADES DÉBILES ---
+            let weakBefore = baseER.entities.length;
+            result = Mapper.mapWeakEntities(baseER, studentRelational, runningRelational);
+            if (result != null) return result;
+            if (baseER.entities.length < weakBefore) changed = true;
+
+            // --- RELACIONES ---
+            //let relBefore = baseER.relationships.length;
+            result = Mapper.mapRelationships(baseER, studentRelational, runningRelational);
+            if (result != null) return result;
+            if (baseER.relationships.length < relBefore) changed = true;
+
+            if (!changed) {
+                return { isCorrect: false, message: "La solución está incompleta o hay errores de nombres/claves." };
+            }
+            
+            if (baseER.entities.length < entBefore || 
+                baseER.relationships.length < relBefore || 
+                baseER.specializations.length < specBefore) {
+                changed = true;
+            }
         }
-        while(baseER.entities.length > 0 || baseER.relationships.length > 0 || baseER.specializations.length > 0 || baseER.categories.length > 0){
-            result = Mapper.mapStrongEntities(baseER, studentRelational, runningRelational)
-            if (result != null) return result
-            result = Mapper.mapSpecializations(baseER, studentRelational, runningRelational)
-            if (result != null) return result
-            result = Mapper.mapWeakEntities(baseER, studentRelational, runningRelational)
-            if (result != null) return result
-            result = Mapper.mapRelationships(baseER, studentRelational, runningRelational)
-            if (result != null) return result
-            result = Mapper.mapMultivaluedAttributes(baseER, studentRelational, runningRelational)
-            if (result != null) return result
-            result = Mapper.mapCategories(baseER, studentRelational, runningRelational)
-            if (result != null) return result
-        }
-        return {isCorrect: true, message: Mapper.msg('CORRECT')}
+        return { isCorrect: true, message: "¡CORRECTO!" };
+
+    } catch (error) {
+        // ESTO TE DIRÁ POR QUÉ NO SALE NADA
+        console.error("ERROR EN EL MAPPER:", error);
+        return { isCorrect: false, message: "ERROR TÉCNICO: " + error.message };
     }
+}*/
+    static checkSolution(baseER0, studentRelational) {
+    try {
+        const baseER = JSON.parse(JSON.stringify(baseER0));
+        const runningRelational = { relations: [] };
+        let result = null;
+        let safetyCounter = 0;
+
+        while (baseER.entities.length > 0 || baseER.relationships.length > 0 || 
+               baseER.specializations.length > 0 || baseER.categories.length > 0) {
+            
+            if (safetyCounter++ > 100) {
+                return { isCorrect: false, message: "Error: Bucle infinito detectado en Mapper." };
+            }
+
+            // Guardamos el estado actual antes de intentar mapear nada
+            let entBefore = baseER.entities.length;
+            let relBefore = baseER.relationships.length;
+            let specBefore = baseER.specializations.length;
+            let catBefore = baseER.categories ? baseER.categories.length : 0;
+
+            // 1. Intentar mapear Entidades Fuertes
+            result = Mapper.mapStrongEntities(baseER, studentRelational, runningRelational);
+            if (result != null) return result; 
+
+            // 2. Intentar mapear Especializaciones (Jerarquías)
+            result = Mapper.mapSpecializations(baseER, studentRelational, runningRelational);
+            if (result != null) return result;
+
+            // 3. Intentar mapear Entidades Débiles
+            result = Mapper.mapWeakEntities(baseER, studentRelational, runningRelational);
+            if (result != null) return result;
+
+            // 4. Intentar mapear Relaciones (1:1, 1:N, N:M)
+            result = Mapper.mapRelationships(baseER, studentRelational, runningRelational);
+            if (result != null) return result;
+
+            // --- LÓGICA DE CONTROL DE CAMBIOS ---
+            let changed = false;
+            let catAfter = baseER.categories ? baseER.categories.length : 0;
+
+            if (baseER.entities.length < entBefore || 
+                baseER.relationships.length < relBefore || 
+                baseER.specializations.length < specBefore ||
+                catAfter < catBefore) {
+                changed = true;
+            }
+
+            // Si después de pasar por todos los métodos no hemos borrado nada del baseER...
+            if (!changed) {
+                return { isCorrect: false, message: "La solución está incompleta o hay errores de nombres/claves." };
+            }
+        }
+        
+        return { isCorrect: true, message: Mapper.msg('CORRECT') };
+
+    } catch (error) {
+        console.error("ERROR EN EL MAPPER:", error);
+        return { isCorrect: false, message: "ERROR TÉCNICO: " + error.message };
+    }
+}
+   
 
     static msg(msgCode, args = []){
         const language = navigator.language
@@ -45,12 +152,12 @@ class Mapper {
 
     static takesPartInSpeOrCat (baseER, entityName) {
         for (const s of baseER.specializations){
-            if (s.superclassEntityName == entityName) return true
+           // if (s.superclassEntityName == entityName) return true
             if (s.subclassEntityNames.indexOf(entityName) != -1) return true
         }
         for (const c of baseER.categories){
             if (c.subclassEntityName == entityName) return true
-            if (c.superclassEntityNames.indexOf(entityName) != -1) return true
+          //  if (c.superclassEntityNames.indexOf(entityName) != -1) return true
         }
         return false
     }
@@ -69,7 +176,18 @@ class Mapper {
         return attributes
     }
 
-    static mapStrongEntities (baseER, studentRelational, runningRelational) {
+   /* static mapStrongEntities (baseER, studentRelational, runningRelational) {
+        let hasChangedLocal = false; //nueva variable para controlar el progreso
+        
+        //necesitamos usar una copia o un bucle hacia atras si vamos a usar splice
+        for(let i = baseER.entities.length -1; i>=0; i--){
+            const entity = baseER.entites[i];
+            if(entity.isWeak) continue;
+            
+            //no saltar superclases, solo subclases
+            const isSubClass=baseER.specializations.som(s => s.subclassEntityNames.includes(entity.name));
+            if(isSubClass) continue;
+        
         for(const entity of baseER.entities){
             if (entity.isWeak) continue
             if (Mapper.takesPartInSpeOrCat(baseER,entity.name)) continue
@@ -167,9 +285,119 @@ class Mapper {
                 baseER.entities.splice(relPos,1)
             }
         }
+    }
         return null
     }
+*/
+    static mapStrongEntities(baseER, studentRelational, runningRelational) {
+        // Usamos bucle hacia atrás para poder usar splice sin saltar elementos
+        for (let i = baseER.entities.length - 1; i >= 0; i--) {
+            const entity = baseER.entities[i];
 
+            // 1. Filtro de exclusión: saltar si es débil o si es una SUBCLASE
+            // Nota: Las superclases (madres) SÍ deben procesarse aquí.
+            if (entity.isWeak) continue;
+            const isSubClass = baseER.specializations.some(s => s.subclassEntityNames.includes(entity.name));
+            if (isSubClass) continue;
+
+            // 2. Buscar la relación en el diseño del alumno
+            const studentRelation = studentRelational.relations.find(r => r.name === entity.name);
+            if (!studentRelation) {
+                return { isCorrect: false, message: Mapper.msg('MISSING_RELATION', [entity.name]) };
+            }
+
+            // 3. Preparar/obtener la relación en nuestro registro interno (runningRelational)
+            let relation = runningRelational.relations.find(r => r.name === entity.name);
+            if (!relation) {
+                relation = { name: entity.name, attributes: [], fks: [] };
+                runningRelational.relations.push(relation);
+            }
+
+            let candidateKeys = [];
+
+            // 4. Procesar atributos (bucle hacia atrás)
+            for (let j = entity.attributes.length - 1; j >= 0; j--) {
+                const attr = entity.attributes[j];
+
+                if (attr.isDerivated) {
+                    // El alumno NO debe incluir atributos derivados
+                    if (studentRelation.attributes.find(a => a.name === attr.name)) {
+                        return { isCorrect: false, message: Mapper.msg('DERIVATE_ATTRIBUTE_INCLUDED', [attr.name, entity.name]) };
+                    }
+                    entity.attributes.splice(j, 1);
+                } 
+                else if (attr.isMultivalued) {
+                    // Los multivaluados se ignoran aquí (se procesan en mapMultivaluedAttributes)
+                    continue; 
+                } 
+                else if (attr.isKey) {
+                    // Manejar Clave (puede ser simple o compuesta/recursiva)
+                    const subattrs = (attr.subattributes && attr.subattributes.length > 0) 
+                                     ? Mapper.getLeafAttributes(attr) 
+                                     : [attr];
+                    
+                    candidateKeys.push(subattrs);
+                    for (const sa of subattrs) {
+                        const studentAttr = studentRelation.attributes.find(a => a.name === sa.name);
+                        if (!studentAttr) {
+                            return { isCorrect: false, message: Mapper.msg('MISSING_KEY_ATTRIBUTE', [sa.name, studentRelation.name]) };
+                        }
+                        // Guardamos en la relación interna marcándolo temporalmente
+                        relation.attributes.push({ name: sa.name });
+                    }
+                    entity.attributes.splice(j, 1);
+                } 
+                else if (attr.subattributes && attr.subattributes.length > 0) {
+                    // ATRIBUTO COMPUESTO NO CLAVE: Metemos los hijos en la lista para procesar en la siguiente vuelta
+                    // y eliminamos al padre (el nombre del atributo compuesto no va a la tabla)
+                    for (const sub of attr.subattributes) {
+                        entity.attributes.push(sub);
+                    }
+                    entity.attributes.splice(j, 1);
+                } 
+                else if (!attr.isPartialKey) {
+                    // Atributo simple normal
+                    const studentAttr = studentRelation.attributes.find(a => a.name === attr.name);
+                    if (!studentAttr) {
+                        return { isCorrect: false, message: Mapper.msg('MISSING_REGULAR_ATTRIBUTE', [attr.name, studentRelation.name]) };
+                    }
+                    relation.attributes.push({ name: attr.name });
+                    entity.attributes.splice(j, 1);
+                }
+            }
+
+            // 5. Validar la Clave Primaria (PK) elegida por el alumno
+            if (candidateKeys.length > 0) {
+                const studentPK = studentRelation.attributes.filter(a => a.isPK);
+                
+                if (studentPK.length === 0) {
+                    return { isCorrect: false, message: Mapper.msg('MISSING_PK', [studentRelation.name]) };
+                }
+
+                // Buscamos cuál de nuestras claves candidatas ha elegido el alumno
+                const chosenKey = candidateKeys.find(ck => {
+                    if (ck.length !== studentPK.length) return false;
+                    return ck.every(attr => studentPK.some(spk => spk.name === attr.name));
+                });
+
+                if (!chosenKey) {
+                    return { isCorrect: false, message: Mapper.msg('WRONG_PK', [studentRelation.name]) };
+                }
+
+                // Marcamos como PK oficial en nuestra relación interna
+                for (const pkPart of chosenKey) {
+                    const attrInRel = relation.attributes.find(a => a.name === pkPart.name);
+                    if (attrInRel) attrInRel.isPK = true;
+                }
+            }
+
+            // 6. Si la entidad no tiene más atributos pendientes, la eliminamos de baseER
+            if (entity.attributes.length === 0) {
+                baseER.entities.splice(i, 1);
+            }
+        }
+        return null;
+    }
     static mapWeakEntities (baseER, studentRelational, runningRelational) {
         /*for (const ent of baseER.entities){
             
@@ -774,140 +1002,79 @@ class Mapper {
         baseER.relationships.splice(pos,1)
         return null
     }
-
-    static mapSpecializations (baseER, studentRelational, runningRelational) {
-        for (let i = 0; i < baseER.specializations.length; i++) {
+    static mapSpecializations(baseER, studentRelational, runningRelational) {
+    for (let i = baseER.specializations.length - 1; i >= 0; i--) {
         const spec = baseER.specializations[i];
         
-        // 1. Buscamos la tabla de la superclase en lo ya validado
-        const superTable = runningRelational.relations.find(r => r.name === spec.superclassEntityName);
-        if (!superTable) continue; // Si la superclase no se ha validado aún, esperamos
+        // 1. Buscamos la superclase (Madre) ya mapeada
+        const superRelation = runningRelational.relations.find(r => r.name === spec.superclassEntityName);
+        if (!superRelation) continue; 
+        
+        const superPK = superRelation.attributes.filter(a => a.isPK);
+        if (superPK.length === 0) continue;
 
-        const pkSuperNames = superTable.attributes.filter(a => a.isPK).map(a => a.name);
-        if (pkSuperNames.length === 0) continue;
-
-        // 2. Validamos cada subclase
+        // 2. Procesamos cada subclase (B, C, etc.)
         for (const subName of spec.subclassEntityNames) {
-            const studentSubTable = studentRelational.relations.find(r => r.name === subName);
-            
-            if (!studentSubTable) {
-                return { isCorrect: false, message: `Falta la tabla para la subclase: ${subName}` };
+            if (runningRelational.relations.find(r => r.name === subName)) continue;
+
+            const studentSubRel = studentRelational.relations.find(r => r.name === subName);
+            if (!studentSubRel) return { isCorrect: false, message: Mapper.msg('MISSING_RELATION', [subName]) };
+
+            const runningSubRel = { name: subName, attributes: [], fks: [] };
+
+            // 3. Validar Herencia de Clave Primaria
+            for (const pkAttr of superPK) {
+                const studentAttr = studentSubRel.attributes.find(a => a.name === pkAttr.name);
+                if (!studentAttr || !studentAttr.isPK) {
+                    return { isCorrect: false, message: Mapper.msg('MISSING_ATTRIBUTE_IN_PK', [pkAttr.name, subName]) };
+                }
+                runningSubRel.attributes.push({ name: pkAttr.name, isPK: true });
             }
 
-            // REGLA: ¿La PK de la subclase es igual a la de la superclase?
-            const subPKs = studentSubTable.attributes.filter(a => a.isPK).map(a => a.name);
-            const hasSamePK = pkSuperNames.every(name => subPKs.includes(name));
+            // 4. Validar Clave Foránea (FK)
+            const studentFK = studentSubRel.fks.find(f => f.targetRelation === spec.superclassEntityName);
+            if (!studentFK) return { isCorrect: false, message: Mapper.msg('MISSING_FK', [subName, spec.superclassEntityName, "Especialización"]) };
+            runningSubRel.fks.push({ targetRelation: spec.superclassEntityName, attributes: superPK.map(a => a.name) });
 
-            if (!hasSamePK) {
-                return { isCorrect: false, message: `La subclase ${subName} debe tener la misma Clave Primaria que ${spec.superclassEntityName}` };
-            }
+            // 5. ATRIBUTOS PROPIOS (Aquí es donde se valida C1, C2, B1, B2...)
+            const subEntityInER = baseER.entities.find(e => e.name === subName);
+            if (subEntityInER) {
+                // Iteramos por los atributos que tiene la entidad en el diagrama ER
+                for (let k = subEntityInER.attributes.length - 1; k >= 0; k--) {
+                    const attr = subEntityInER.attributes[k];
+                    
+                    // Si es la clave (que ya heredamos), la quitamos y seguimos
+                    if (attr.isKey) {
+                        subEntityInER.attributes.splice(k, 1);
+                        continue;
+                    }
 
-            // REGLA: ¿Existe la FK de la subclase a la superclase?
-            // En studentRelational, fks.targetRelation es un String (por el minimizeSchema del editor)
-            const studentFK = studentSubTable.fks.find(f => f.targetRelation === spec.superclassEntityName);
-            if (!studentFK) {
-                return { isCorrect: false, message: `Falta la Clave Ajena en ${subName} apuntando a ${spec.superclassEntityName}` };
+                    // Buscamos el atributo (ej: C2) en la tabla del alumno
+                    const studentAttr = studentSubRel.attributes.find(a => a.name === attr.name);
+                    if (!studentAttr) {
+                        return { isCorrect: false, message: Mapper.msg('MISSING_REGULAR_ATTRIBUTE', [attr.name, subName]) };
+                    }
+                    
+                    // Si existe, lo añadimos a nuestra relación de control y lo borramos del ER
+                    runningSubRel.attributes.push({ name: attr.name });
+                    subEntityInER.attributes.splice(k, 1);
+                }
+
+                // Si la entidad se queda sin atributos, la borramos del ER para que el bucle avance
+                if (subEntityInER.attributes.length === 0) {
+                    const entIdx = baseER.entities.findIndex(e => e.name === subName);
+                    baseER.entities.splice(entIdx, 1);
+                }
             }
+            runningRelational.relations.push(runningSubRel);
         }
 
-        // Si todo está OK para esta jerarquía, la eliminamos del array pendiente
+        // Al terminar todas las subclases de esta jerarquía, la eliminamos
         baseER.specializations.splice(i, 1);
-        return null; 
     }
     return null;
-        
-        /*for (const spec of baseER.specializations){
-            const superName = spec.superclassEntityName
-            const subNames = spec.subclassEntityNames
-            const superRel = studentRelational.relations.find(r => r.name == superName)
-            const isTotal = spec.isTotal
-            const isOverlapping = spec.allowsOverlapping //true = O, false = d
-            //comprobas si existe la superClase
-            
-            if (superRel == null){
-                return { isCorrect:false, message: Mapper.msg('MISSING_SUPERCLASS_RELATION', [superName])}
-            }
-            
-            const superPK = superRel.attributes.filter(a=> a.isPK)
-            
-            if(superPK.length == 0){
-                return {isCorrect:false, message: Mapper.msg ('MISSING_PK', [superName])}
-                
-            }
-            
-            //comprobar subclases
-            let validSubclassCount =0
-            for(const subName of subNames){
-                const subRel = studentRelational.relations.find(r => r.name == subName)
-            
-                // complorbar que existe la subclase
-                if(subRel == null){
-                    return {isCorrect:false, message:Mapper.msg('MISSING_SUBCLASS_RELATION',[subName])}
-                }
-                //comprobar que las subclases tienen la PK de la superclase
-                for (const pkAttr of superPK){
-                    const attr = subRel.attributes.find(a => a.name == pkAttr.name)
-
-                    if (attr == null){
-                        return{isCorrect:false, 
-                            message: Mapper.msg('MISSING_PK_IN_SUBLASS', [subName, pkAttr.name])}
-                    }
-
-                    //tiene que ser PK en la subclase
-                    if(!attr.isPK){
-                        return{isCorrect:false, message: Mapper.msg('PK_NOT_MARKED_IN_SUBCLASS', [subName, pkAttr.name])}
-                    }
-                }
-
-                //FK de la superclase
-                const fk = subRel.fks.find(fk => fk.targetRelation == superName)
-
-                if(fk ==null){
-                    return{isCorrect: false, message: Mapper.msg('MISSING_FK_IN_SUBCLASS', [subName, subName])}
-                }
-
-                // comprobar atributos
-                for(const pkAttr of superPK){
-                    if(!fk.attributes.includes(pkAttr.name)){
-                        return {isCorrect:false, message: Mapper.msg('WRONG_FK_IN_SUBCLASS', [subName, pkAttr.name])}
-                    }
-                } 
-                validSubClassCount++
-            }
-            
-            //D vs O
-            if(!isOverlapping){
-                //cada subclase debe tener solo una FK a la superclase
-                for (const subName of subNames){
-                    const subRel = studentRelational.relations.find(r => r.name == subName)
-                    
-                    const fkToSuper = subRel.fks.filter(fk => fk.targetRelation == superName)
-                    
-                    if(fkToSuper.length>1){
-                        return{
-                            isCorrect:false,
-                            message: Mapper.msg('DISJOINT_SPECIALIZATION_ERROR', [subName])
-                        }
-                    }
-                }
-            }
-            
-            //total o parcial
-            if(isTotal){
-                if(validSubClassCount != subNames.length){
-                    return{
-                        isCorrect:false,
-                        message:Mapper.msg('TOTAL_SPECIALIZATION_ERROR', [superName])
-                    }
-                }
-            }
-            //si todo esta bien
-            const pos = baseER.specializations.indexOf(spec)
-            baseER.specializations.splice(pos,1)
-        }
-        return null*/
-    }
-
+}
+  
     static mapCategories (baseER, studentRelational, runningRelational) {
         for(const cat of baseER.categories){
             const catName = cat.categoryEntityName

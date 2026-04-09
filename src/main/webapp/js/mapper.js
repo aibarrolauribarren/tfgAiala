@@ -1,28 +1,112 @@
 import {messages} from "./messages.js"
 
 class Mapper {
-    static checkSolution (baseER0, studentRelational) {
-        const baseER = JSON.parse(JSON.stringify(baseER0))
-        let result
-        const runningRelational = {
-            relations: []
+    /*static checkSolution (baseER0, studentRelational) {
+    const baseER = JSON.parse(JSON.stringify(baseER0))
+    let result
+    const runningRelational = { relations: [] }
+    let safety = 0; // Evita que se bloquee la web
+
+    while((baseER.entities.length > 0 || baseER.relationships.length > 0 || baseER.specializations.length > 0 || baseER.categories.length > 0) && safety < 100){
+        safety++;
+        
+        // Guardamos cuántas cosas hay antes de intentar mapear
+        let totalBefore = baseER.entities.length + baseER.specializations.length + baseER.relationships.length;
+
+        result = Mapper.mapStrongEntities(baseER, studentRelational, runningRelational)
+        if (result != null) return result
+        
+        result = Mapper.mapWeakEntities(baseER, studentRelational, runningRelational)
+        if (result != null) return result
+        
+        result = Mapper.mapRelationships(baseER, studentRelational, runningRelational)
+        if (result != null) return result
+        
+        result = Mapper.mapSpecializations(baseER, studentRelational, runningRelational)
+        if (result != null) return result
+
+        result = Mapper.mapCategories(baseER, studentRelational, runningRelational)
+        if (result != null) return result
+
+        // COMPROBACIÓN ANTIBLOQUEO: Si en una vuelta entera no hemos borrado nada, error.
+        let totalAfter = baseER.entities.length + baseER.specializations.length + baseER.relationships.length;
+        if (totalBefore === totalAfter) {
+            return {isCorrect: false, message: "La solución está incompleta o hay atributos/relaciones mal definidos."}
         }
-        while(baseER.entities.length > 0 || baseER.relationships.length > 0 || baseER.specializations.length > 0 || baseER.categories.length > 0){
-            result = Mapper.mapStrongEntities(baseER, studentRelational, runningRelational)
-            if (result != null) return result
-            result = Mapper.mapWeakEntities(baseER, studentRelational, runningRelational)
-            if (result != null) return result
-            result = Mapper.mapRelationships(baseER, studentRelational, runningRelational)
-            if (result != null) return result
-            result = Mapper.mapMultivaluedAttributes(baseER, studentRelational, runningRelational)
-            if (result != null) return result
-            result = Mapper.mapSpecializations(baseER, studentRelational, runningRelational)
-            if (result != null) return result
-            result = Mapper.mapCategories(baseER, studentRelational, runningRelational)
-            if (result != null) return result
-        }
-        return {isCorrect: true, message: Mapper.msg('CORRECT')}
     }
+    
+    if (safety >= 100) return {isCorrect: false, message: "Error de lógica: Bucle infinito."};
+    
+    return {isCorrect: true, message: "¡PERFECTO!!"}
+}*/
+    static checkSolution(baseER0, studentRelational) {
+    try {
+        const baseER = JSON.parse(JSON.stringify(baseER0));
+        const runningRelational = { relations: [] };
+        let result = null;
+        let safetyCounter = 0;
+
+        while (baseER.entities.length > 0 || baseER.relationships.length > 0 || 
+               baseER.specializations.length > 0 || baseER.categories.length > 0) {
+           
+            let entBefore = baseER.entities.length;
+            let relBefore = baseER.relationships.length;
+            let specBefore = baseER.specializations.length;
+
+            result = Mapper.mapStrongEntities(baseER, studentRelational, runningRelational);
+            if (result != null) return result; // Aquí es donde devolverá "Falta el atributo A5..."
+
+            result = Mapper.mapSpecializations(baseER, studentRelational, runningRelational);
+            if (result != null) return result;
+            
+            if (safetyCounter++ > 100) {
+                return { isCorrect: false, message: "Error: Bucle infinito detectado en Mapper." };
+            }
+
+            let changed = false;
+
+            // --- ENTIDADES FUERTES ---
+            //let entBefore = baseER.entities.length;
+            result = Mapper.mapStrongEntities(baseER, studentRelational, runningRelational);
+            if (result != null) return result;
+            if (baseER.entities.length < entBefore) changed = true;
+
+            // --- ESPECIALIZACIONES ---
+           // let specBefore = baseER.specializations.length;
+            result = Mapper.mapSpecializations(baseER, studentRelational, runningRelational);
+            if (result != null) return result;
+            if (baseER.specializations.length < specBefore) changed = true;
+
+            // --- ENTIDADES DÉBILES ---
+            let weakBefore = baseER.entities.length;
+            result = Mapper.mapWeakEntities(baseER, studentRelational, runningRelational);
+            if (result != null) return result;
+            if (baseER.entities.length < weakBefore) changed = true;
+
+            // --- RELACIONES ---
+            //let relBefore = baseER.relationships.length;
+            result = Mapper.mapRelationships(baseER, studentRelational, runningRelational);
+            if (result != null) return result;
+            if (baseER.relationships.length < relBefore) changed = true;
+
+            if (!changed) {
+                return { isCorrect: false, message: "La solución está incompleta o hay errores de nombres/claves." };
+            }
+            
+            if (baseER.entities.length < entBefore || 
+                baseER.relationships.length < relBefore || 
+                baseER.specializations.length < specBefore) {
+                changed = true;
+            }
+        }
+        return { isCorrect: true, message: "¡CORRECTO!" };
+
+    } catch (error) {
+        // ESTO TE DIRÁ POR QUÉ NO SALE NADA
+        console.error("ERROR EN EL MAPPER:", error);
+        return { isCorrect: false, message: "ERROR TÉCNICO: " + error.message };
+    }
+}
 
     static msg(msgCode, args = []){
         const language = navigator.language
@@ -87,7 +171,47 @@ class Mapper {
                 return {isCorrect: false, message: Mapper.msg('MISSING_RELATION',[entity.name])}
             }
             let candidateKeys = []
-            for(const attr of entity.attributes){
+            let pos = 0;
+        while (pos < entity.attributes.length) {
+            const attr = entity.attributes[pos];
+            let increment = true; // Solo avanzamos si no borramos nada
+
+            if (attr.isDerivated) {
+                if (studentRelation.attributes.find((a) => a.name == attr.name)) 
+                    return { isCorrect: false, message: Mapper.msg('DERIVATE_ATTRIBUTE_INCLUDED', [attr.name, entity.name]) };
+                entity.attributes.splice(pos, 1);
+                increment = false;
+            } 
+            else if (attr.isKey) {
+                const subattrs = (attr.subattributes && attr.subattributes.length > 0) ? Mapper.getLeafAttributes(attr) : [attr];
+                candidateKeys.push(subattrs);
+                for (const sa of subattrs) {
+                    if (!studentRelation.attributes.find((a) => a.name == sa.name))
+                        return { isCorrect: false, message: Mapper.msg('MISSING_KEY_ATTRIBUTE', [sa.name, studentRelation.name]) };
+                    relation.attributes.push({ name: sa.name });
+                }
+                entity.attributes.splice(pos, 1);
+                increment = false;
+            } 
+            else if (attr.subattributes != null && attr.subattributes.length > 0) {
+                // PARA EL A5: Metemos los hijos y BORRAMOS al padre
+                for (const sub of attr.subattributes) {
+                    entity.attributes.push(sub);
+                }
+                entity.attributes.splice(pos, 1);
+                increment = false; // Al borrar, no sumamos pos para mirar el nuevo atributo en esta misma posición
+            } 
+            else if (!attr.isPartialKey) {
+                if (!studentRelation.attributes.find((a) => a.name == attr.name))
+                    return { isCorrect: false, message: Mapper.msg('MISSING_REGULAR_ATTRIBUTE', [attr.name, studentRelation.name]) };
+                relation.attributes.push({ name: attr.name });
+                entity.attributes.splice(pos, 1);
+                increment = false;
+            }
+
+            if (increment) pos++;
+        }
+           /* for(const attr of entity.attributes){
                 const pos = entity.attributes.findIndex((a) => a.name == attr.name)
                 if(attr.isDerivated){
                     const studentAttribute = studentRelation.attributes.find((a) => a.name == attr.name)
@@ -119,7 +243,9 @@ class Mapper {
                     entity.attributes.splice(pos,1)
                 }
                 else if (attr.subattributes != null && attr.subattributes.length > 0){
-                    for(const sub of attr.subattributes) entity.attributes.push(sub)
+                    for(const sub of attr.subattributes){
+                        entity.attributes.push(sub)
+                    }
                     entity.attributes.splice(pos,1)
                 }
                 else if (!attr.isPartialKey){
@@ -130,7 +256,7 @@ class Mapper {
                     relation.attributes.push({name: attr.name})
                     entity.attributes.splice(pos,1)
                 }
-            }
+            }*/
             
             if(candidateKeys.length == 1){
                 for(const pkA of candidateKeys[0]){
@@ -159,7 +285,9 @@ class Mapper {
                     return {isCorrect: false, message: Mapper.msg('WRONG_PK',[studentRelation.name])}
                 }
                 for (const a of usedPK){
-                    a.isPK = true
+                    //a.isPK = true
+                    const attrInRel = relation.attributes.find(at => at.name == a.name)
+                    if (attrInRel) attrInRel.isPK = true
                 }
             }
             if (entity.attributes.length == 0){

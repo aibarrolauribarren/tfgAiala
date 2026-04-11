@@ -2,48 +2,54 @@ import {messages} from "./messages.js"
 
 class Mapper {
     static checkSolution (baseER0, studentRelational) {
-        const baseER = JSON.parse(JSON.stringify(baseER0))
-    let result
-    const runningRelational = { relations: [] }
-    let safety = 0; 
+        try {
+            
+            const baseER = JSON.parse(JSON.stringify(baseER0))
+            let result
+            const runningRelational = { relations: [] }
+            let safety = 0; 
 
-    while((baseER.entities.length > 0 || baseER.relationships.length > 0 || baseER.specializations.length > 0 || baseER.categories.length > 0) && safety < 100){
-        safety++;
-        let totalBefore = baseER.entities.length + baseER.relationships.length + baseER.specializations.length + baseER.categories.length;
+            while((baseER.entities.length > 0 || baseER.relationships.length > 0 || baseER.specializations.length > 0 || baseER.categories.length > 0) && safety < 100){
+                safety++;
+                let totalBefore = baseER.entities.length + baseER.relationships.length + baseER.specializations.length + baseER.categories.length;
 
-        result = Mapper.mapStrongEntities(baseER, studentRelational, runningRelational)
-        if (result != null) return result
-        
-        result = Mapper.mapWeakEntities(baseER, studentRelational, runningRelational)
-        if (result != null) return result
-        
-        result = Mapper.mapRelationships(baseER, studentRelational, runningRelational)
-        if (result != null) return result
-        
-        result = Mapper.mapMultivaluedAttributes(baseER, studentRelational, runningRelational)
-        if (result != null) return result
-        
-        result = Mapper.mapSpecializations(baseER, studentRelational, runningRelational)
-        if (result != null) return result
-        
-        result = Mapper.mapCategories(baseER, studentRelational, runningRelational)
-        if (result != null) return result
+                result = Mapper.mapStrongEntities(baseER, studentRelational, runningRelational)
+                if (result != null) return result
+                
+                result = Mapper.mapWeakEntities(baseER, studentRelational, runningRelational)
+                if (result != null) return result
+                
+                result = Mapper.mapRelationships(baseER, studentRelational, runningRelational)
+                if (result != null) return result
+                
+                result = Mapper.mapMultivaluedAttributes(baseER, studentRelational, runningRelational)
+                if (result != null) return result
+                
+                result = Mapper.mapSpecializations(baseER, studentRelational, runningRelational)
+                if (result != null) return result
+                
+                result = Mapper.mapCategories(baseER, studentRelational, runningRelational)
+                if (result != null) return result
 
-        let totalAfter = baseER.entities.length + baseER.relationships.length + baseER.specializations.length + baseER.categories.length;
-        
-        // Si no ha cambiado nada, es que el alumno no ha terminado o algo está mal
-        if (totalBefore === totalAfter) {
-            return {isCorrect: false, message: "La solución está incompleta o hay elementos mal definidos (revisa nombres de tablas o claves)."}
+                let totalAfter = baseER.entities.length + baseER.relationships.length + baseER.specializations.length + baseER.categories.length;
+                
+                if (totalBefore === totalAfter) {
+                    return {isCorrect: false, message: "La solución está incompleta o hay elementos mal definidos (revisa nombres o claves)."}
+                }
+            }
+
+            // SI SALE DEL BUCLE PORQUE TODO SE HA BORRADO
+            if (safety < 100) {
+                return {isCorrect: true, message: "¡PERFECTO!!"}
+            } else {
+                return {isCorrect: false, message: "Error: Se ha alcanzado el límite de intentos (Bucle detectado)."}
+            }
+
+        } catch (error) {
+            console.error(error);
+            return {isCorrect: false, message: "Error crítico en el Mapper: " + error.message};
         }
     }
-
-    // SI LLEGAMOS AQUÍ Y EL SAFETY NO HA EXPLOTADO, ES QUE TODO ESTÁ BIEN
-    if (safety < 100) {
-        return {isCorrect: true, message: "¡PERFECTO!!"}
-    } else {
-        return {isCorrect: false, message: "Se ha alcanzado el límite de intentos del Mapper (posible bucle)."}
-    }
-}
 
    
     static getRelationPK (runningRelational, relationName) {
@@ -54,104 +60,129 @@ class Mapper {
     }
 
     static takesPartInSpeOrCat (baseER, entityName) {
-        // Solo bloqueamos si es una SUBCLASE (hija)
-        for (const s of baseER.specializations) {
-            if (s.subclassEntityNames.includes(entityName)) return true;
+        for (const s of baseER.specializations){
+            if (s.superclassEntityName == entityName) return true
+            if (s.subclassEntityNames.indexOf(entityName) != -1) return true
         }
-        return false;
+        for (const c of baseER.categories){
+            if (c.subclassEntityName == entityName) return true
+            if (c.superclassEntityNames.indexOf(entityName) != -1) return true
+        }
+        return false
     }
 
-    static getLeafAttributes(attr) {
-        if (!attr.subattributes || attr.subattributes.length === 0) return [attr];
-        let leaves = [];
-        for (const sub of attr.subattributes) leaves = leaves.concat(Mapper.getLeafAttributes(sub));
-        return leaves;
+    static getLeafAttributes (attribute) {
+        const attributes = []
+        for(const a of attribute.subattributes){
+            if (a.subattributes != null && a.subattributes.length > 0){
+                attributes.concat(Mapper.getLeafAttributes(a))
+            } 
+            else{
+                attributes.push(a)
+            }
+        }
+        return attributes
     }
 
     static msg(msgCode, args = []){
+        const language = navigator.language
         const msg = messages[msgCode]
-        if (!msg) return msgCode
-        let finalMsg = navigator.language.includes('es') ? msg.es : msg.en
-        for (let i = 0; i < args.length; i++) finalMsg = finalMsg.replace(`{${i}}`, args[i])
-        return finalMsg
+        const default_lang = 'es-ES'
+        let langMsg = msg[language] || msg[default_lang]
+        for(let i=0;i<args.length;i++){
+            let regExp = new RegExp('\\$'+i,'g')
+            langMsg = langMsg.replace(regExp,args[i])
+        } 
+        return langMsg
     }
 
-   static mapStrongEntities (baseER, studentRelational, runningRelational) {
-        // Usamos un bucle clásico hacia atrás para evitar errores de índice al borrar entidades
+   static mapStrongEntities(baseER, studentRelational, runningRelational) {
         for (let i = baseER.entities.length - 1; i >= 0; i--) {
             const entity = baseER.entities[i];
-            
-            if (entity.isWeak) continue
-            // Importante: takesPartInSpeOrCat debe dejar pasar a las Madres
-            if (Mapper.takesPartInSpeOrCat(baseER, entity.name)) continue
+            if (entity.isWeak) continue;
 
-            const studentRelation = studentRelational.relations.find((r) => r.name == entity.name)
-            if (studentRelation == null) return {isCorrect: false, message: Mapper.msg('MISSING_RELATION',[entity.name])}
-
-            let relation = runningRelational.relations.find((r) => r.name == entity.name)
-            if (relation == null) {
-                relation = { name: entity.name, attributes: [], fks: [] }
-                runningRelational.relations.push(relation)
+            const studentRelation = studentRelational.relations.find((r) => r.name == entity.name);
+            if (studentRelation == null) {
+                return { isCorrect: false, message: Mapper.msg('MISSING_RELATION', [entity.name]) };
             }
 
-            let candidateKeys = []
+            // --- NUEVO: CONTROL DE SOBRANTES (A5) ---
+            // Revisamos si el alumno ha puesto atributos que son compuestos en el ER
+            for (const studentAttr of studentRelation.attributes) {
+                const erAttr = entity.attributes.find(a => a.name === studentAttr.name);
+                // Si el alumno puso A5 y en el ER A5 tiene hijos, está mal
+                if (erAttr && erAttr.subattributes && erAttr.subattributes.length > 0) {
+                    return { isCorrect: false, message: `El atributo compuesto '${studentAttr.name}' no debe aparecer en la relación` };
+                }
+            }
             
-            // CORRECCIÓN ATRIBUTOS (A5): Usamos while manual para controlar el índice 'pos'
+            let relation = runningRelational.relations.find((r) => r.name == entity.name);
+            if (relation == null) {
+                relation = { name: entity.name, attributes: [], fks: [] };
+                runningRelational.relations.push(relation);
+            }
+
+            // Aquí guardaremos TODOS los nombres de atributos que deben ser PK
+            let expectedPKNames = [];
             let pos = 0;
-            while (pos < entity.attributes.length) {
-                const attr = entity.attributes[pos];
-                let deleted = false;
+            let attributesToProcess = [...entity.attributes];
+            entity.attributes = []; 
+
+            while (pos < attributesToProcess.length) {
+                const attr = attributesToProcess[pos];
+                let mapped = false;
 
                 if (attr.isDerivated) {
-                    if (studentRelation.attributes.find(a => a.name == attr.name)) 
-                        return {isCorrect: false, message: Mapper.msg('DERIVATE_ATTRIBUTE_INCLUDED', [attr.name, entity.name])}
-                    entity.attributes.splice(pos, 1);
-                    deleted = true;
-                } 
-                else if (attr.isKey) {
+                    mapped = true;
+                } else if (attr.isKey) {
+                    // Sacamos todos los hijos (A1, A2...) y los metemos en la lista de PK esperadas
                     const subattrs = (attr.subattributes && attr.subattributes.length > 0) ? Mapper.getLeafAttributes(attr) : [attr];
-                    candidateKeys.push(subattrs);
+                    
                     for (const sa of subattrs) {
+                        expectedPKNames.push(sa.name); // <--- Guardamos A1, A2...
                         if (!studentRelation.attributes.find(a => a.name == sa.name))
-                            return {isCorrect: false, message: Mapper.msg('MISSING_KEY_ATTRIBUTE', [sa.name, studentRelation.name])}
+                            return { isCorrect: false, message: Mapper.msg('MISSING_KEY_ATTRIBUTE', [sa.name, entity.name]) };
                         relation.attributes.push({ name: sa.name });
                     }
-                    entity.attributes.splice(pos, 1);
-                    deleted = true;
-                } 
-                else if (attr.subattributes != null && attr.subattributes.length > 0) {
-                    // AQUÍ DESAPARECE EL A5: Metemos hijos al final y borramos al padre
-                    for (const sub of attr.subattributes) entity.attributes.push(sub);
-                    entity.attributes.splice(pos, 1);
-                    deleted = true; 
-                } 
-                else if (!attr.isPartialKey && !attr.isMultivalued) {
+                    mapped = true;
+                } else if (attr.subattributes != null && attr.subattributes.length > 0) {
+                    for (const sub of attr.subattributes) attributesToProcess.push(sub);
+                    mapped = true;
+                } else if (!attr.isPartialKey && !attr.isMultivalued) {
                     if (!studentRelation.attributes.find(a => a.name == attr.name))
-                        return {isCorrect: false, message: Mapper.msg('MISSING_REGULAR_ATTRIBUTE', [attr.name, studentRelation.name])}
+                        return { isCorrect: false, message: Mapper.msg('MISSING_REGULAR_ATTRIBUTE', [attr.name, entity.name]) };
                     relation.attributes.push({ name: attr.name });
-                    entity.attributes.splice(pos, 1);
-                    deleted = true;
+                    mapped = true;
                 }
 
-                if (!deleted) pos++;
+                if (!mapped) entity.attributes.push(attr);
+                pos++;
             }
 
-            // Marcamos las PKs en la relación final
-            if (candidateKeys.length > 0) {
-                const studentPK = studentRelation.attributes.filter(a => a.isPK);
-                const usedPK = candidateKeys.find(c => 
-                    c.length === studentPK.length && c.every(a => studentPK.some(spk => spk.name === a.name))
-                );
-                if (!usedPK) return {isCorrect: false, message: Mapper.msg('WRONG_PK', [studentRelation.name])};
-                for (const a of usedPK) {
-                    const rAttr = relation.attributes.find(ra => ra.name === a.name);
-                    if (rAttr) rAttr.isPK = true;
-                }
+            // --- VALIDACIÓN DE PK TOTAL ---
+            const studentPKNames = studentRelation.attributes
+                .filter(a => a.isPK)
+                .map(a => a.name);
+
+            // Comprobamos si el conjunto de PKs del alumno coincide con las del ER
+            const arraysMatch = expectedPKNames.length === studentPKNames.length && 
+                               expectedPKNames.every(name => studentPKNames.includes(name));
+
+            if (!arraysMatch) {
+                return { isCorrect: false, message: Mapper.msg('WRONG_PK', [entity.name]) };
+            }
+            
+            // Si coincide, marcamos internamente para que la relación sea válida
+            for (const name of expectedPKNames) {
+                const rAttr = relation.attributes.find(ra => ra.name === name);
+                if (rAttr) rAttr.isPK = true;
             }
 
-            if (entity.attributes.length == 0) baseER.entities.splice(i, 1);
+            if (entity.attributes.length == 0) {
+                baseER.entities.splice(i, 1);
+            }
         }
-        return null
+        return null;
     }
     
     static mapWeakEntities (baseER, studentRelational, runningRelational) {
@@ -383,7 +414,7 @@ class Mapper {
         }
         return null
     }
-
+/*
     static mapRelationships (baseER, studentRelational, runningRelational) {
         let result
         for(const rel of baseER.relationships){
@@ -411,24 +442,80 @@ class Mapper {
             }
         }
         return null
+    }*/
+    static mapRelationships (baseER, studentRelational, runningRelational) {
+        for (let i = baseER.relationships.length - 1; i >= 0; i--) {
+            const rel = baseER.relationships[i];
+            const roles = rel.participants;
+            const card1 = roles[0].maxCardinality;
+            const card2 = roles[1].maxCardinality;
+            let result = null;
+
+            if (roles.length > 2) {
+                result = Mapper.mapNAryRelationships(baseER, studentRelational, runningRelational, rel);
+            } else if (card1 == '1' && card2 == '1') {
+                result = Mapper.map11Relationship(baseER, studentRelational, runningRelational, rel);
+            } else if ((card1 == '1' && card2 == 'N') || (card1 == 'N' && card2 == '1')) {
+                result = Mapper.map1NRelationship(baseER, studentRelational, runningRelational, rel);
+            } else {
+                result = Mapper.mapMNRelationship(baseER, studentRelational, runningRelational, rel);
+            }
+
+            if (result != null) return result;
+
+            // ¡ESTO ES LO QUE TE FALTA! Si no hay error, borramos el rombo del diagrama ER
+            const index = baseER.relationships.indexOf(rel);
+            baseER.relationships.splice(index, 1);
+        }
+        return null;
     }
 
-    static mapRelationshipAttributes (baseER, studentRelational, runningRelational, relationship, targetRelation) {
-        // todo
-        // todo -> gestionar atributos del vínculo
-       /*     
-            let i = 0
-            while (relationship.attributes.length > 0){
-                // todo -> gestionar diferentes tipos de atributos: derivados, multivaluados, compuestos
-                
-                const attr = studentRelWithFK.attributes.find((sa) => (sa.checked == null || sa.checked == false) && a.name == sa.name)
-                if (attr == null){
-                    return {isCorrect: false, message: Mapper.msg('MISSING_RELATIONSHIP_ATTR',[relationship.label, studentRelWithFK.name, a.name])}
-                }
+   /* static mapRelationshipAttributes (baseER, studentRelational, runningRelational, relationship, targetRelation) {
+    // Buscamos la tabla del alumno que debe contener los atributos
+    const studentRel = studentRelational.relations.find(r => r.name === targetRelation.name);
+    
+    if (!studentRel) return null; // Seguridad
 
+    let pos = 0;
+    // Usamos un while para ir vaciando los atributos del rombo
+    while (relationship.attributes.length > 0 && pos < relationship.attributes.length) {
+        const attr = relationship.attributes[pos];
+        
+        // Buscamos si el alumno ha puesto el atributo del rombo en la tabla
+        const found = studentRel.attributes.find(sa => sa.name === attr.name);
+        
+        if (!found) {
+            // Si no lo encuentra, lanza el mensaje de error
+            return {
+                isCorrect: false, 
+                message: Mapper.msg('MISSING_RELATIONSHIP_ATTR', [relationship.label, studentRel.name, attr.name])
+            };
+        }
+
+        // Si lo encuentra, lo añadimos a nuestra relación interna y lo borramos del ER
+        targetRelation.attributes.push({ name: attr.name });
+        relationship.attributes.splice(pos, 1); 
+        // No sumamos pos porque al hacer splice la lista se acorta
+    }
+    
+    return null;
+}*/
+    static mapRelationshipAttributes (baseER, studentRelational, runningRelational, relationship, targetRelation) {
+        // Buscamos si el alumno puso el atributo del rombo en la tabla elegida
+        for (let i = relationship.attributes.length - 1; i >= 0; i--) {
+            const relAttr = relationship.attributes[i];
+            const studentAttr = targetRelation.attributes.find(sa => sa.name === relAttr.name);
+
+            if (!studentAttr) {
+                return {
+                    isCorrect: false,
+                    message: `El atributo '${relAttr.name}' del vínculo '${relationship.label}' debe estar en la tabla ${targetRelation.name}.`
+                };
             }
-            */
-        return null
+            // Si está, lo quitamos de la lista de pendientes
+            relationship.attributes.splice(i, 1);
+        }
+        return null;
     }
 
     // todo -> falta terminar
@@ -524,7 +611,53 @@ class Mapper {
         return null
     }
 
-    static map11Relationship (baseER, studentRelational, runningRelational, relationship){
+    static map11Relationship(baseER, studentRelational, runningRelational, rel) {
+        const entB = rel.participants[0].entityName; // Entidad B
+        const entC = rel.participants[1].entityName; // Entidad C
+
+        const studentTableB = studentRelational.relations.find(r => r.name === entB);
+        const studentTableC = studentRelational.relations.find(r => r.name === entC);
+        const runningRelB = runningRelational.relations.find(r => r.name === entB);
+        const runningRelC = runningRelational.relations.find(r => r.name === entC);
+
+        if (!studentTableB || !studentTableC) return null;
+
+        // 1. COMPROBAR LA CLAVE FORÁNEA (FK)
+        // Miramos si la PK de B está en la tabla C
+        const pkBInC = runningRelB.attributes.filter(a => a.isPK).every(pk => 
+            studentTableC.attributes.some(sa => sa.name === pk.name)
+        );
+        // Miramos si la PK de C está en la tabla B
+        const pkCInB = runningRelC.attributes.filter(a => a.isPK).every(pk => 
+            studentTableB.attributes.some(sa => sa.name === pk.name)
+        );
+
+        // PRIMER IF: Si no hay FK en ningún lado, se queja
+        if (!pkBInC && !pkCInB) {
+            return { 
+                isCorrect: false, 
+                message: `ERROR: Debes poner la clave de ${entB} en la tabla ${entC} (o al revés) como clave foránea.` 
+            };
+        }
+
+        // 2. COMPROBAR EL ATRIBUTO DEL ROMBO (R1)
+        // El PDF dice que el atributo va a la tabla que recibe la FK
+        const tablaElegida = pkBInC ? studentTableC : studentTableB;
+        
+        // SEGUNDO IF: Buscamos el atributo R1 en la tabla donde has puesto la FK
+        for (const attrER of rel.attributes) {
+            const encontrado = tablaElegida.attributes.find(sa => sa.name === attrER.name);
+            if (!encontrado) {
+                return {
+                    isCorrect: false,
+                    message: `ERROR: Te falta el atributo '${attrER.name}' del vínculo R1. Como has puesto la FK en la tabla ${tablaElegida.name}, el atributo debe ir ahí también.`
+                };
+            }
+        }
+
+        return null;
+    }
+    /*static map11Relationship (baseER, studentRelational, runningRelational, relationship){
         const pos = baseER.relationships.find((r) => r == relationship)
         const minCard1 = relationship.participants[0].minCardinality
         const minCard2 = relationship.participants[1].minCardinality
@@ -584,10 +717,10 @@ class Mapper {
         }
         baseER.relationships.splice(pos,1)
         return null
-    }
+    }*/
 
     // done!
-    static map1NRelationship (baseER, studentRelational, runningRelational, relationship){
+    /*static map1NRelationship (baseER, studentRelational, runningRelational, relationship){
         const pos = baseER.relationships.find((r) => r == relationship)
         const maxCard1 = relationship.participants[0].maxCardinality
         const maxCard2 = relationship.participants[1].maxCardinality
@@ -641,7 +774,26 @@ class Mapper {
         baseER.relationships.splice(pos,1)
         return null
     }
+*/
+    static map1NRelationship(baseER, studentRelational, runningRelational, rel) {
+        const roles = rel.participants;
+        const roleN = roles.find(r => r.maxCardinality == 'N');
+        const role1 = roles.find(r => r.maxCardinality == '1');
 
+        const studentRelN = studentRelational.relations.find(r => r.name === roleN.entityName);
+        const runningRel1 = runningRelational.relations.find(r => r.name === role1.entityName);
+
+        if (!studentRelN || !runningRel1) return null;
+
+        // Comprobamos que TODAS las partes de la PK del lado 1 estén en el lado N
+        for (const pk of runningRel1.attributes.filter(a => a.isPK)) {
+            if (!studentRelN.attributes.find(sa => sa.name === pk.name)) {
+                return { isCorrect: false, message: `Falta la clave foránea '${pk.name}' en la tabla '${roleN.entityName}' por la relación '${rel.label}'.` };
+            }
+        }
+        return Mapper.mapRelationshipAttributes(baseER, studentRelational, runningRelational, rel, studentRelN);
+    }
+    /*
     // done
     static mapMNRelationship (baseER, studentRelational, runningRelational, relationship){
         const pos = baseER.relationships.find((r) => r == relationship)
@@ -756,9 +908,17 @@ class Mapper {
         if (result != null) return result
         baseER.relationships.splice(pos,1)
         return null
+    }*/
+    static mapMNRelationship(baseER, studentRelational, runningRelational, rel) {
+    const studentRelTab = studentRelational.relations.find(r => r.name === rel.label);
+    if (!studentRelTab) {
+        return { isCorrect: false, message: `La relación N:N ${rel.label} debe ser una tabla propia.` };
     }
+    // (Aquí faltaría validar que tiene las PKs de ambos lados, pero ya es un avance)
+    return null;
+}
     
-    static mapSpecializations (baseER, studentRelational, runningRelational) {
+   /* static mapSpecializations (baseER, studentRelational, runningRelational) {
         for (let i = baseER.specializations.length - 1; i >= 0; i--) {
             const spec = baseER.specializations[i];
             const superRel = runningRelational.relations.find(r => r.name === spec.superclassEntityName);
@@ -776,6 +936,19 @@ class Mapper {
                 runningRelational.relations.push({name: subName, attributes: [], fks: []});
             }
             baseER.specializations.splice(i, 1);
+        }
+        return null;
+    }*/
+    static mapSpecializations (baseER, studentRelational, runningRelational) {
+        for (let i = baseER.specializations.length - 1; i >= 0; i--) {
+            const spec = baseER.specializations[i];
+            // Buscamos si la tabla de la madre ya ha sido creada en runningRelational
+            const superRel = runningRelational.relations.find(r => r.name === spec.superclassEntityName);
+            
+            if (superRel) {
+                // Si la madre ya está, borramos la especialización de la lista de tareas
+                baseER.specializations.splice(i, 1);
+            }
         }
         return null;
     }

@@ -55,7 +55,7 @@ class Editor {
     }
     return null
   }
- cleanERDiagram(erdFileContent) {
+/* cleanERDiagram(erdFileContent) {
     const erd = { entities: [], relationships: [], specializations: [], categories: [] };
 
     // 1. PROCESAR HERENCIAS (Paso previo estático)
@@ -154,12 +154,12 @@ class Editor {
         }
     }
     return erd;
-}
+}*/
 processAttributeLink(erd, el, erdFileContent) {
     // Aquí pon tu lógica original de AttributeLink (la que ya tenías)
     // Pero asegúrate de que no usas el índice 'i', sino directamente 'el'
 }
-  /*cleanERDiagram (erdFileContent) {
+  cleanERDiagram (erdFileContent) {
     const erd = {entities: [], relationships: [], specializations: [], categories: []}
     // 2. Procesar Puntos de Conexión (El círculo de la herencia)
     const connectionPoints = erdFileContent.cells.filter(c => c.type === 'erd.ConnectionPoint');
@@ -393,12 +393,13 @@ processAttributeLink(erd, el, erdFileContent) {
 
     */
 
- /* }*/
+  }
+ 
   showMappingResult (result) {
-    let elClass, backgroundColor, textColor,imgSrc
+    let elClass, backgroundColor, textColor, imgSrc
     if (result.isCorrect){
       elClass = 'success_mapping_message'
-      //imgSrc = './images/happy.png'
+     // imgSrc = './images/happy.png'
     }
     else {
       elClass = 'error_mapping_message'
@@ -406,7 +407,7 @@ processAttributeLink(erd, el, erdFileContent) {
     }
     const template = document.querySelector('#toast_template')
     const clone = template.content.cloneNode(true)
-   // clone.querySelector('.toast_result_icon').src = imgSrc
+    //clone.querySelector('.toast_result_icon').src = imgSrc
     clone.querySelector('.toast_message').innerText = result.message
     clone.querySelector('.toast_message').classList.add(elClass)
     const cont = document.createElement('div')
@@ -417,6 +418,7 @@ processAttributeLink(erd, el, erdFileContent) {
     cont.appendChild(clone)
     document.body.appendChild(cont)
   }
+  
   testMapping (){
     const mapTestButton = document.querySelector("#mapCheck")
     if (mapTestButton != null){

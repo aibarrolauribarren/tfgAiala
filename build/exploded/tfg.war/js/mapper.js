@@ -12,19 +12,19 @@ class Mapper {
             while((baseER.entities.length > 0 || baseER.relationships.length > 0 || baseER.specializations.length > 0 || baseER.categories.length > 0) && safety < 100){
                 safety++;
                 let totalBefore = baseER.entities.length + baseER.relationships.length + baseER.specializations.length + baseER.categories.length;
-
-                result = Mapper.mapStrongEntities(baseER, studentRelational, runningRelational)
-                if (result != null) return result
-                
-                result = Mapper.mapWeakEntities(baseER, studentRelational, runningRelational)
-                if (result != null) return result
-                
-                result = Mapper.mapRelationships(baseER, studentRelational, runningRelational)
-                if (result != null) return result
                 
                 result = Mapper.mapMultivaluedAttributes(baseER, studentRelational, runningRelational)
                 if (result != null) return result
+
+                result = Mapper.mapWeakEntities(baseER, studentRelational, runningRelational)
+                if (result != null) return result
                 
+                result = Mapper.mapStrongEntities(baseER, studentRelational, runningRelational)
+                if (result != null) return result
+                                
+                result = Mapper.mapRelationships(baseER, studentRelational, runningRelational)
+                if (result != null) return result
+                                
                 result = Mapper.mapSpecializations(baseER, studentRelational, runningRelational)
                 if (result != null) return result
                 
@@ -96,97 +96,84 @@ class Mapper {
         return langMsg
     }
 
-   static mapStrongEntities(baseER, studentRelational, runningRelational) {
+    static mapStrongEntities(baseER, studentRelational, runningRelational) {
+        // Recorremos las entidades de atrás hacia adelante para poder usar splice con seguridad
         for (let i = baseER.entities.length - 1; i >= 0; i--) {
             const entity = baseER.entities[i];
-            if (entity.isWeak) continue;
+            const studentTable = studentRelational.relations.find(r => r.name === entity.name);
 
-            const studentRelation = studentRelational.relations.find((r) => r.name == entity.name);
-            if (studentRelation == null) {
-                return { isCorrect: false, message: Mapper.msg('MISSING_RELATION', [entity.name]) };
-            }
+            // Si el alumno aún no ha dibujado la tabla, no podemos validarla todavía
+            if (!studentTable) continue; 
 
-            // --- NUEVO: CONTROL DE SOBRANTES (A5) ---
-            // Revisamos si el alumno ha puesto atributos que son compuestos en el ER
-            for (const studentAttr of studentRelation.attributes) {
-                const erAttr = entity.attributes.find(a => a.name === studentAttr.name);
-                // Si el alumno puso A5 y en el ER A5 tiene hijos, está mal
-                if (erAttr && erAttr.subattributes && erAttr.subattributes.length > 0) {
-                    return { isCorrect: false, message: `El atributo compuesto '${studentAttr.name}' no debe aparecer en la relación` };
+        // --- REGLA 0: Si es una entidad débil, ¡NO LA TOQUES! ---
+        // Buscamos si tiene una relación identificadora
+        const esDebil = baseER.relationships.some(r => 
+            r.isIdentificator && r.participants.some(p => p.entityName === entity.name)
+        );
+        if (esDebil) continue; // La dejamos pasar para que la valide mapWeakEntities
+        // -------------------------------------------------------
+        
+        
+            // Validamos los atributos de la entidad
+            for (const attr of entity.attributes) {
+                
+                // REGLA 1: Ignorar derivados (como A2) y multivaluados (van a otra tabla)
+                if (attr.isDerivated || attr.isMultivalued) {
+                    continue; 
                 }
-            }
-            
-            let relation = runningRelational.relations.find((r) => r.name == entity.name);
-            if (relation == null) {
-                relation = { name: entity.name, attributes: [], fks: [] };
-                runningRelational.relations.push(relation);
-            }
 
-            // Aquí guardaremos TODOS los nombres de atributos que deben ser PK
-            let expectedPKNames = [];
-            let pos = 0;
-            let attributesToProcess = [...entity.attributes];
-            entity.attributes = []; 
-
-            while (pos < attributesToProcess.length) {
-                const attr = attributesToProcess[pos];
-                let mapped = false;
-
-                if (attr.isDerivated) {
-                    mapped = true;
-                } else if (attr.isKey) {
-                    // Sacamos todos los hijos (A1, A2...) y los metemos en la lista de PK esperadas
-                    const subattrs = (attr.subattributes && attr.subattributes.length > 0) ? Mapper.getLeafAttributes(attr) : [attr];
-                    
-                    for (const sa of subattrs) {
-                        expectedPKNames.push(sa.name); // <--- Guardamos A1, A2...
-                        if (!studentRelation.attributes.find(a => a.name == sa.name))
-                            return { isCorrect: false, message: Mapper.msg('MISSING_KEY_ATTRIBUTE', [sa.name, entity.name]) };
-                        relation.attributes.push({ name: sa.name });
+                // REGLA 2: Atributos Compuestos (como B3)
+                if (attr.subattributes && attr.subattributes.length > 0) {
+                    // El "padre" desaparece y buscamos a los "hijos" (B4, B5) directamente en la tabla
+                    for (const sub of attr.subattributes) {
+                        
+                            const foundSub = studentTable.attributes.find(sa => sa.name === sub.name);
+                            if (!foundSub) {
+                                return { 
+                                    isCorrect: false, 
+                                    message: `ERROR: El sub-atributo '${sub.name}' debe estar en la tabla ${entity.name}.` 
+                                };
+                            }
+                            if(attr.isKey && !foundSub.isPK){
+                            
+                                return { 
+                                    isCorrect: false, 
+                                    message: `ERROR: El atributo '${sub.name}' debe ser Clave Primaria porque su padre '${attr.name}' lo era.` 
+                                };
+                            }
+                        
                     }
-                    mapped = true;
-                } else if (attr.subattributes != null && attr.subattributes.length > 0) {
-                    for (const sub of attr.subattributes) attributesToProcess.push(sub);
-                    mapped = true;
-                } else if (!attr.isPartialKey && !attr.isMultivalued) {
-                    if (!studentRelation.attributes.find(a => a.name == attr.name))
-                        return { isCorrect: false, message: Mapper.msg('MISSING_REGULAR_ATTRIBUTE', [attr.name, entity.name]) };
-                    relation.attributes.push({ name: attr.name });
-                    mapped = true;
+                } 
+                // REGLA 3: Atributos Simples
+                else {
+                    const foundAttr = studentTable.attributes.find(sa => sa.name === attr.name);
+                    if (!foundAttr) {
+                        return { 
+                            isCorrect: false, 
+                            message: `ERROR: Falta el atributo '${attr.name}' en la tabla ${entity.name}.` 
+                        };
+                    }
+
+                    // Opcional: Validar si debe ser PK
+                    if (attr.isKey && !foundAttr.isPK) {
+                        return { 
+                            isCorrect: false, 
+                            message: `ERROR: El atributo '${attr.name}' debe ser clave primaria en la tabla ${entity.name}.` 
+                        };
+                    }
                 }
-
-                if (!mapped) entity.attributes.push(attr);
-                pos++;
             }
 
-            // --- VALIDACIÓN DE PK TOTAL ---
-            const studentPKNames = studentRelation.attributes
-                .filter(a => a.isPK)
-                .map(a => a.name);
-
-            // Comprobamos si el conjunto de PKs del alumno coincide con las del ER
-            const arraysMatch = expectedPKNames.length === studentPKNames.length && 
-                               expectedPKNames.every(name => studentPKNames.includes(name));
-
-            if (!arraysMatch) {
-                return { isCorrect: false, message: Mapper.msg('WRONG_PK', [entity.name]) };
-            }
-            
-            // Si coincide, marcamos internamente para que la relación sea válida
-            for (const name of expectedPKNames) {
-                const rAttr = relation.attributes.find(ra => ra.name === name);
-                if (rAttr) rAttr.isPK = true;
-            }
-
-            if (entity.attributes.length == 0) {
-                baseER.entities.splice(i, 1);
-            }
+            // Si ha pasado todos los filtros, la entidad está bien mapeada
+            runningRelational.relations.push(studentTable);
+            baseER.entities.splice(i, 1);
         }
         return null;
     }
     
-    static mapWeakEntities (baseER, studentRelational, runningRelational) {
-       /* for (const ent of baseER.entities){
+    
+  /* static mapWeakEntities (baseER, studentRelational, runningRelational) {
+        for (const ent of baseER.entities){
             
             if (!ent.isWeak) continue
             const identifierRel = baseER.relationships.filter((r) => {
@@ -317,132 +304,152 @@ class Mapper {
 
 
 
-        }*/
+        }
         
         return null
 
-    }
-
-    static mapMultivaluedAttributes (baseER, studentRelational, runningRelational) {
-        
-        for(const entity of baseER.entities){
-            const multivaluedAttrs = entity.attributes.filter((a) => a.isMultivalued)
-            if (multivaluedAttrs.length == 0) continue
-            const entityTable = runningRelational.relations.find((r) => r.name == entity.name)
-            if (entityTable == null) continue
-            const pkAttributes = entityTable.attributes.filter((a) => a.isPK)
-            if (pkAttributes.length == 0) continue
-            
-            for(const multi of multivaluedAttrs) {
-                const relation = {
-                    name: multi.name,
-                    attributes: [],
-                    fks: []
-                }
-                runningRelational.relations.push(relation) 
-
-                const studentRelation = studentRelational.relations.find((r) => r.name == multi.name)
-                if (studentRelation == null){
-                    return {isCorrect: false, message: Mapper.msg('MISSING_MULTIVALUED_RELATION', [multi.name, multi.name])}
-                }
-
-                for (const a of pkAttributes) {
-                    const studentAttr = studentRelation.attributes.find((sAt) => sAt.name == a.name)
-                    if (studentAttr == null){
-                        return {isCorrect: false, message: Mapper.msg('MISSING_MULTIVALUED_RELATION_ENTITY_PK_ATTRIBUTE', [multi.name, a.name, entity.name])}
-                    }
-                    if (!studentAttr.isPK){
-                        return {isCorrect: false, message: Mapper.msg('MISSING_MULTIVALUED_RELATION_ENTITY_PK', [multi.name, a.name])}
-                    }
-                    relation.attributes.push({name: a.name, isPK: true})
-                }
-
-                relation.fks.push({
-                    targetRelation: entity.name,
-                    attributes: pkAttributes.map((a) => a.name)
-                })
-
-                const fk = studentRelation.fks.find((f) => {
-                    if (f.targetRelation != entity.name) return false
-                    if (f.attributes.length != pkAttributes.length) return false
-                    const differentAttr = pkAttributes.map((a) => a.name).find((a) => f.attributes.indexOf(a) == -1)
-                    return differentAttr == null
-                })
-
-                if (fk == null){
-                    return {isCorrect: false, message: Mapper.msg('WRONG_MULTIVALUED_FK', [multi.name, entity.name])}
-                }
-
-                const getRegularLeafAttributes = (multivaluedAttribute) => {
-                    let leaves = []
-                    if (multivaluedAttribute.subattributes == null || multivaluedAttribute.subattributes.length == 0){
-                        return [multivaluedAttribute]
-                    }
-                    for(const ma of multivaluedAttribute.subattributes) {
-                        if(ma.isDerivated) continue
-                        // todo -> tener en cuenta otros tipos de atributos, viendo qué es posible y qué no
-                        leaves = leaves.concat(getRegularLeafAttributes(ma))
-                    }
-                    return leaves
-                }
-
-                const regularAttributes = getRegularLeafAttributes(multi)
-
-                for (const ra of regularAttributes) {
-                    relation.attributes.push({
-                        name: ra.name,
-                        isPK: true
-                    })
-
-                    const studentAttr = studentRelation.attributes.find((a) => a.name == ra.name)
-                    if (studentAttr == null){
-                        return {isCorrect: false, message: Mapper.msg('MISSING_MULTIVALUED_ATTRIBUTE_IN_RELATION', [multi.name, ra.name])}
-                    }
-                    if (!studentAttr.isPK){
-                        return {isCorrect: false, message: Mapper.msg('MISSING_MULTIVALUED_ATTRIBUTE_IN_RELATION_PK', [multi.name, ra.name])}
-                    }
-                }
-
-                const multiAttrPos = entity.attributes.findIndex((a) => a.name == multi.name)
-                entity.attributes.splice(multiAttrPos,1)
-
-                if (entity.attributes.length == 0){
-                    const entityPos = baseER.entities.findIndex((e) => e.name == entity.name)
-                    baseER.entities.splice(entityPos,1)
-                }                
-            } 
-        }
-        return null
-    }
-/*
-    static mapRelationships (baseER, studentRelational, runningRelational) {
-        let result
-        for(const rel of baseER.relationships){
-            if (rel.participants.length > 2){
-                result = Mapper.mapNAryRelationships(baseER, studentRelational, runningRelational, rel)
-                if (result != null) return result
-                continue
-            }   
-            const card1 = rel.participants[0].maxCardinality
-            const card2 = rel.participants[1].maxCardinality
-            if (card1 == '1' && card2 == '1'){
-                result = Mapper.map11Relationship(baseER, studentRelational, runningRelational, rel)
-                if (result != null) return result
-                continue
-            }
-            else if (card1 == '1' && card2 == 'N'){
-                result = Mapper.map1NRelationship(baseER, studentRelational, runningRelational, rel)
-                if (result != null) return result
-                continue
-            } 
-            else {
-                result = Mapper.mapMNRelationship(baseER, studentRelational, runningRelational, rel)
-                if (result != null) return result
-                continue
-            }
-        }
-        return null
     }*/
+    static mapWeakEntities(baseER, studentRelational, runningRelational) {
+    for (let i = baseER.entities.length - 1; i >= 0; i--) {
+        const entity = baseER.entities[i];
+        
+        // 1. Buscamos la relación identificadora
+        const relDebil = baseER.relationships.find(r => 
+            r.isIdentificator && r.participants.some(p => p.entityName === entity.name)
+        );
+
+        if (!relDebil) continue;
+
+        const studentTable = studentRelational.relations.find(r => r.name === entity.name);
+        if (!studentTable) continue;
+
+        // 2. Identificar la entidad fuerte
+        const pFuerte = relDebil.participants.find(p => p.entityName !== entity.name);
+        const runningFuerte = runningRelational.relations.find(r => r.name === pFuerte.entityName);
+        
+        // Si la fuerte (B) aún no está validada, esperamos
+        if (!runningFuerte) continue; 
+
+        // 3. VALIDAR CLAVE DE LA FUERTE (B1 en tu caso)
+        const pksFuerte = runningFuerte.attributes.filter(a => a.isPK);
+        
+        for (const pk of pksFuerte) {
+            // Buscamos el atributo en la tabla del alumno
+            const foundInDebil = studentTable.attributes.find(sa => sa.name === pk.name);
+            
+            if (!foundInDebil) {
+                return { isCorrect: false, message: `ERROR: La tabla '${entity.name}' debe incluir '${pk.name}' (PK de la fuerte).` };
+            }
+            
+            // --- VALIDACIÓN CRÍTICA: Aquí es donde fallaba ---
+            // Forzamos a que el booleano sea estrictamente true
+            if (foundInDebil.isPK !== true) {
+                return { 
+                    isCorrect: false, 
+                    message: `ERROR: El atributo '${pk.name}' en la tabla '${entity.name}' DEBE ser Clave Primaria (PK).` 
+                };
+            }
+            if (foundInDebil.isFK !== true) {
+                return { 
+                    isCorrect: false, 
+                    message: `ERROR: El atributo '${pk.name}' en la tabla '${entity.name}' DEBE ser Clave Foránea (FK).` 
+                };
+            }
+        }
+
+        // 4. VALIDAR DISCRIMINADOR (A1 en tu caso)
+        const discriminador = entity.attributes.find(a => a.isPartialKey || a.isKey);
+        if (discriminador) {
+            const foundDisc = studentTable.attributes.find(sa => sa.name === discriminador.name);
+            if (!foundDisc) {
+                return { isCorrect: false, message: `ERROR: Falta el discriminador '${discriminador.name}' en '${entity.name}'.` };
+            }
+            if (foundDisc.isPK !== true) {
+                return { 
+                    isCorrect: false, 
+                    message: `ERROR: El discriminador '${discriminador.name}' debe estar marcado como Clave Primaria (PK).` 
+                };
+            }
+        }
+
+        // Si ha pasado todas las validaciones de arriba, entonces y SOLO ENTONCES, limpiamos
+        runningRelational.relations.push(studentTable);
+        baseER.entities.splice(i, 1);
+        const relIdx = baseER.relationships.indexOf(relDebil);
+        if (relIdx !== -1) baseER.relationships.splice(relIdx, 1);
+        
+        return null; // Salimos para que el bucle principal vuelva a empezar con las listas limpias
+    }
+    return null;
+}
+
+   static mapMultivaluedAttributes(baseER, studentRelational, runningRelational) {
+    for (const entity of baseER.entities) { // Miramos en las entidades que aún no se han borrado
+        for (let i = entity.attributes.length - 1; i >= 0; i--) {
+            const attr = entity.attributes[i];
+
+            if (attr.isMultivalued) {
+                // Buscamos la tabla que el alumno debe haber creado (B3)
+                const studentTable = studentRelational.relations.find(r => r.name === attr.name);
+
+                if (!studentTable) {
+                    return { 
+                        isCorrect: false, 
+                        message: `ERROR: El atributo multivaluado '${attr.name}' debe tener su propia tabla` 
+                    };
+                }
+
+                // VALIDACIÓN DE CLAVE COMPUESTA (B1 + B4 + B5)
+                const entityPKName = entity.attributes.find(a => a.isKey).name; // B1
+                
+                // ¿Está la PK de la entidad (B1) en la tabla B3 y es PK?
+                const hasEntityPK = studentTable.attributes.find(a => a.name === entityPKName && a.isPK);
+                if (!hasEntityPK) {
+                    return { isCorrect: false, message: `ERROR: La tabla '${attr.name}' debe incluir '${entityPKName}' como parte de su Clave Primaria.` };
+                }
+
+                if (attr.subattributes && attr.subattributes.length >0) {
+                    for (const sub of attr.subattributes) {
+                        const foundSub = studentTable.attributes.find(a => a.name === sub.name);
+                        if (!foundSub) {
+                            return { 
+                                isCorrect: false, 
+                                message: `ERROR: Falta el atributo '${sub.name}' en la tabla '${attr.name}'.` 
+                            };
+                        }
+                        // SI EL ALUMNO LE PUSO PK POR ERROR, LE AVISAMOS
+                        if (!foundSub.isPK) {
+                            return {
+                                isCorrect: false,
+                                message: `ERROR: El atributo '${sub.name}' no debería ser Clave Primaria en la tabla '${attr.name}'.`
+                            };
+                        }
+                    }
+                }else {
+                    // Si es un multivaluado simple como A2
+                    const foundAttr = studentTable.attributes.find(sa => sa.name === attr.name);
+                    if (!foundAttr) {
+                        return { 
+                            isCorrect: false, 
+                            message: `ERROR: Falta el atributo '${attr.name}' en su tabla.` 
+                        };
+                    }
+                    
+                    if (!foundAttr.isPK) {
+                        return { 
+                            isCorrect: false, 
+                            message: `ERROR: El atributo '${attr.name}' debe ser PK en la tabla '${attr.name}'.` 
+                        };
+                    }
+                }
+                // Si todo está bien, borramos el atributo para que no lo pida en la tabla normal
+                entity.attributes.splice(i, 1);
+            }
+        }
+    }
+    return null;
+}
+
     static mapRelationships (baseER, studentRelational, runningRelational) {
         for (let i = baseER.relationships.length - 1; i >= 0; i--) {
             const rel = baseER.relationships[i];
@@ -657,124 +664,7 @@ class Mapper {
 
         return null;
     }
-    /*static map11Relationship (baseER, studentRelational, runningRelational, relationship){
-        const pos = baseER.relationships.find((r) => r == relationship)
-        const minCard1 = relationship.participants[0].minCardinality
-        const minCard2 = relationship.participants[1].minCardinality
-        let participantWithFK, participantNoFK
-        if (minCard1 == '1' && minCard2 == '0'){ // la fk sí o sí en el participante 1
-            participantWithFK = 0
-            participantNoFK = 1
-        }
-        else if (minCard1 == '0' && minCard2 == '1'){ // la fk sí o sí en el participante 2
-            participantWithFK = 1
-            participantNoFK = 0
-        }
-
-        if (minCard1 != minCard2){
-            const relWithFK = runningRelational.relations.find((r) => r.name == relationship.participants[participantWithFK].entityName)
-            const relNoFK = runningRelational.relations.find((r) => r.name == relationship.participants[participantNoFK].entityName)
-            const studentRelWithFK = studentRelational.relations.find((r) => r.name == relationship.participants[participantWithFK].entityName)
-            const studentRelNoFK = studentRelational.relations.find((r) => r.name == relationship.participants[participantNoFK].entityName)
-
-            if (relWithFK == null || relNoFK == null) return null // todavía no se ha transformado alguna de las relaciones participantes
-
-            const pkRelNoFK = relNoFK.attributes.filter((a) => a.isPK)
-            if (pkRelNoFK == null || pkRelNoFK.length == 0) return null // la relación a referenciar todavía no tiene PK
-
-
-            for (const a of pkRelNoFK){
-                const regExp = new RegExp(a.name+"'*")
-                const attr = studentRelWithFK.attributes.find((sa) => (sa.checked == null || sa.checked == false) && regExp.test(sa.name))
-                if (attr == null){
-                    return {isCorrect: false, message: Mapper.msg('MISSING_FK_ATTR',[relationship.label, studentRelWithFK.name, a.name, studentRelNoFK.name])}
-                }
-                relWithFK.attributes.push({name: attr.name})
-                attr.checked = true
-            }
-
-            const studentFK = studentRelWithFK.fks.find((fk) => (fk.checked == null || fk.checked == false) && fk.targetRelation == studentRelNoFK.name)
-            if (studentFK == null){
-                return {isCorrect: false, message: Mapper.msg('MISSING_FK',[studentRelWithFK.name, studentRelNoFK.name, relationship.label])}
-            }
-            for (const a of pkRelNoFK){
-                const regExp = new RegExp(a.name+"'*")
-                const fkAttr = studentFK.attributes.find((fkAttr) => regExp.test(fkAttr))
-                if (fkAttr == null){
-                    return {isCorrect: false, message: Mapper.msg('MISSING_ATTR_IN_FK',[studentRelWithFK.name, studentRelNoFK.name, a.name])}
-                }
-            }
-            if (studentFK.attributes.length != pkRelNoFK.length){
-                return {isCorrect: false, message: Mapper.msg('MORE_ATTR_IN_FK',[studentRelWithFK.name, studentRelNoFK.name])}
-            }
-
-            let result = Mapper.mapRelationshipAttributes(baseER, studentRelational, runningRelational, relationship, relWithFK)
-            if (result != null) return result
-        }
-        else { // ver qué ha hecho el alumno
-            // todo!!!
-
-        }
-        baseER.relationships.splice(pos,1)
-        return null
-    }*/
-
-    // done!
-    /*static map1NRelationship (baseER, studentRelational, runningRelational, relationship){
-        const pos = baseER.relationships.find((r) => r == relationship)
-        const maxCard1 = relationship.participants[0].maxCardinality
-        const maxCard2 = relationship.participants[1].maxCardinality
-        let participantWithFK, participantNoFK
-        if (maxCard1 == '1' && maxCard2 == 'N'){
-            participantWithFK = 0
-            participantNoFK = 1
-        }
-        else {
-            participantWithFK = 1
-            participantNoFK = 0
-        }
-
-        const relWithFK = runningRelational.relations.find((r) => r.name == relationship.participants[participantWithFK].entityName)
-        const relNoFK = runningRelational.relations.find((r) => r.name == relationship.participants[participantNoFK].entityName)
-        const studentRelWithFK = studentRelational.relations.find((r) => r.name == relationship.participants[participantWithFK].entityName)
-        const studentRelNoFK = studentRelational.relations.find((r) => r.name == relationship.participants[participantNoFK].entityName)
-
-        if (relWithFK == null || relNoFK == null) return null // todavía no se ha transformado alguna de las relaciones participantes
-
-        const pkRelNoFK = relNoFK.attributes.filter((a) => a.isPK)
-        if (pkRelNoFK == null || pkRelNoFK.length == 0) return null // la relación a referenciar todavía no tiene PK
-
-        for (const a of pkRelNoFK){
-            const regExp = new RegExp(a.name+"'*")
-            const attr = studentRelWithFK.attributes.find((sa) => (sa.checked == null || sa.checked == false) && regExp.test(sa.name))
-            if (attr == null){
-                return {isCorrect: false, message: Mapper.msg('MISSING_FK_ATTR',[relationship.label, studentRelWithFK.name, a.name, studentRelNoFK.name])}
-            }
-            relWithFK.attributes.push({name: attr.name})
-            attr.checked = true
-        }
-
-        const studentFK = studentRelWithFK.fks.find((fk) => (fk.checked == null || fk.checked == false) && fk.targetRelation == studentRelNoFK.name)
-        if (studentFK == null){
-            return {isCorrect: false, message: Mapper.msg('MISSING_FK',[studentRelWithFK.name, studentRelNoFK.name, relationship.label])}
-        }
-        for (const a of pkRelNoFK){
-            const regExp = new RegExp(a.name+"'*")
-            const fkAttr = studentFK.attributes.find((fkAttr) => regExp.test(fkAttr))
-            if (fkAttr == null){
-                return {isCorrect: false, message: Mapper.msg('MISSING_ATTR_IN_FK',[studentRelWithFK.name, studentRelNoFK.name, a.name])}
-            }
-        }
-        if (studentFK.attributes.length != pkRelNoFK.length){
-            return {isCorrect: false, message: Mapper.msg('MORE_ATTR_IN_FK',[studentRelWithFK.name, studentRelNoFK.name])}
-        }
-
-        let result = Mapper.mapRelationshipAttributes(baseER, studentRelational, runningRelational, relationship, relWithFK)
-        if (result != null) return result
-        baseER.relationships.splice(pos,1)
-        return null
-    }
-*/
+    
     static map1NRelationship(baseER, studentRelational, runningRelational, rel) {
         const roles = rel.participants;
         const roleN = roles.find(r => r.maxCardinality == 'N');
@@ -786,12 +676,12 @@ class Mapper {
         if (!studentRelN || !runningRel1) return null;
 
         // Comprobamos que TODAS las partes de la PK del lado 1 estén en el lado N
-        for (const pk of runningRel1.attributes.filter(a => a.isPK)) {
-            if (!studentRelN.attributes.find(sa => sa.name === pk.name)) {
-                return { isCorrect: false, message: `Falta la clave foránea '${pk.name}' en la tabla '${roleN.entityName}' por la relación '${rel.label}'.` };
+        for (const pk of studentRelN.attributes.filter(a => a.isPK)) {
+            if (!runningRel1.attributes.find(sa => sa.name === pk.name)) {
+                return { isCorrect: false, message: `Falta la clave foránea '${pk.name}' en la tabla '${role1.entityName}' por la relación '${rel.label}'.` };
             }
         }
-        return Mapper.mapRelationshipAttributes(baseER, studentRelational, runningRelational, rel, studentRelN);
+        return Mapper.mapRelationshipAttributes(baseER, studentRelational, runningRelational, rel, runningRel1);
     }
     /*
     // done
@@ -909,14 +799,33 @@ class Mapper {
         baseER.relationships.splice(pos,1)
         return null
     }*/
+    // --- PASO 5: RELACIONES M:N (como tu R3) ---
     static mapMNRelationship(baseER, studentRelational, runningRelational, rel) {
-    const studentRelTab = studentRelational.relations.find(r => r.name === rel.label);
-    if (!studentRelTab) {
-        return { isCorrect: false, message: `La relación N:N ${rel.label} debe ser una tabla propia.` };
+        const studentTable = studentRelational.relations.find(r => r.name === rel.label);
+
+        if (!studentTable) {
+            return { isCorrect: false, message: `ERROR: La relación M:N '${rel.label}' debe tener su propia tabla.` };
+        }
+
+        // La PK de la tabla de la relación debe ser la suma de las PKs de las entidades que participan
+        for (const participant of rel.participants) {
+            const entityER = runningRelational.relations.find(r => r.name === participant.entityName);
+            if (!entityER) return null; // Seguridad
+
+            for (const pk of entityER.attributes.filter(a => a.isPK)) {
+                const foundInTable = studentTable.attributes.find(sa => sa.name === pk.name);
+                if (!foundInTable || !foundInTable.isPK) {
+                    return { 
+                        isCorrect: false, 
+                        message: `ERROR: La tabla '${rel.label}' debe tener '${pk.name}' como parte de su Clave Primaria.` 
+                    };
+                }
+            }
+        }
+        
+        // Atributos del rombo (si tuviera)
+        return Mapper.mapRelationshipAttributes(baseER, studentRelational, runningRelational, rel, studentTable);
     }
-    // (Aquí faltaría validar que tiene las PKs de ambos lados, pero ya es un avance)
-    return null;
-}
     
    /* static mapSpecializations (baseER, studentRelational, runningRelational) {
         for (let i = baseER.specializations.length - 1; i >= 0; i--) {

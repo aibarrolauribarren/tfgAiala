@@ -34,7 +34,8 @@ class Mapper {
                 let totalAfter = baseER.entities.length + baseER.relationships.length + baseER.specializations.length + baseER.categories.length;
                 
                 if (totalBefore === totalAfter) {
-                    return {isCorrect: false, message: "La solución está incompleta o hay elementos mal definidos."}
+                    //return {isCorrect: false, message: "La solución está incompleta o hay elementos mal definidos."}
+                    break;
                 }
             }
 
@@ -74,8 +75,17 @@ class Mapper {
                 }
             }
 
+            // FINAL: Si el bucle while terminó por completo (borró todo el ER)
+            // significa que la solución es 100% correcta.
+            if (baseER.entities.length === 0 && baseER.relationships.length === 0 && 
+                baseER.specializations.length === 0 && baseER.categories.length === 0) {
+                return {isCorrect: true, message: "¡PERFECTO!!"};
+            }
+
+            // Si salimos del bucle pero aún quedan cosas en baseER, es que la solución está incompleta
+            return {isCorrect: false, message: "La solución está incompleta. Revisa las entidades o relaciones pendientes."};
             // Si llega aquí, es que no hay "basura"
-            return {isCorrect: true, message: "¡PERFECTO!!"}
+          //  return {isCorrect: true, message: "¡PERFECTO!!"}
 
             // SI SALE DEL BUCLE PORQUE TODO SE HA BORRADO
           /*  if (safety < 100) {
@@ -139,10 +149,13 @@ class Mapper {
         // Recorremos las entidades de atrás hacia adelante para poder usar splice con seguridad
         for (let i = baseER.entities.length - 1; i >= 0; i--) {
             const entity = baseER.entities[i];
+            const esSubclase = baseER.specializations.some(s => s.subclassEntityNames.includes(entity.name));
+            if (esSubclase) continue;
             const studentTable = studentRelational.relations.find(r => r.name === entity.name);
-
             // Si el alumno aún no ha dibujado la tabla, no podemos validarla todavía
             if (!studentTable) continue; 
+            
+            
             
         // --- CAMBIO AQUÍ: Si es débil (isWeak: true), NO la procesamos como fuerte ---
         if (entity.isWeak) continue; 
@@ -373,6 +386,8 @@ class Mapper {
                     }
                     foundAttr.isValidated=true;
                 }
+                const pkReal = entity.attributes.find(a => a.isKey).name;
+                // --- VALIDACIÓN DE LA FK (FLECHA) ---
                 const tieneFK = studentTable.fks.find(f => f.targetRelation === entity.name);
 
                 if (!tieneFK) {
@@ -381,12 +396,25 @@ class Mapper {
                         message: `ERROR: La tabla del atributo multivaluado '${studentTable.name}' debe tener una FK hacia '${entity.name}'.` 
                     };
                 }
-                // Comprobamos que la flecha apunte a la PK de A y no otro cualquiera
-               
-                if (tieneFK.targetAttribute && tieneFK.targetAttribute !== entityPKName) {
+                // 1. Detectamos el origen de la flecha por cualquier medio posible
+                let origenDetectado = tieneFK.originAttribute || tieneFK.fromAttribute || tieneFK.from || tieneFK.source;
+
+                // 2. Si el origen es 'undefined' (porque la flecha sale del borde),
+                // pero vemos que el alumno ha escrito "FK:A" en A1 (lo cual significa que A1 es el campo),
+                // vamos a ser inteligentes y buscar si el campo A1 existe.
+                if (!origenDetectado) {
+                    const campoPK = studentTable.attributes.find(a => a.name === entityPKName);
+                    // Si el campo A1 existe en la tabla A2, damos por hecho que la FK sale de ahí
+                    if (campoPK) {
+                        origenDetectado = entityPKName;
+                    }
+                }
+
+                // 3. VALIDACIÓN FINAL (Muy sencilla)
+                if (origenDetectado !== entityPKName) {
                     return {
                         isCorrect: false,
-                        message: `ERROR: La clave foránea de '${studentTable.name}' debe apuntar a la clave primaria '${entityPKName}', no a '${tieneFK.targetAttribute}'.`
+                        message: `ERROR: En la tabla '${studentTable.name}', la FK debe ser '${entityPKName}', no '${origenDetectado || 'la tabla'}'.`
                     };
                 }
                 tieneFK.isValidated=true;
@@ -604,13 +632,13 @@ class Mapper {
         let fkEncontrada = null;
 
         if (p1.minCardinality === '0' && p2.minCardinality === '1') {
-            tablaDestino = studentTable1; // Destino es la entidad con (1,1)
-            nombreTablaOrigen = ent2Name;
-            fkEncontrada = pk2en1; // Buscamos la clave de la opcional en la obligatoria
+            tablaDestino = studentTable2; // Destino es la entidad con (1,1)
+            nombreTablaOrigen = ent1Name;
+            fkEncontrada = pk1en2; // Buscamos la clave de la opcional en la obligatoria
         } else if (p2.minCardinality === '0' && p1.minCardinality === '1') {
-            tablaDestino = studentTable2;
-            nombreTablaOrgien = ent1Name;
-            fkEncontrada = pk1en2;
+            tablaDestino = studentTable1;
+            nombreTablaOrigen = ent2Name;
+            fkEncontrada = pk2en1;
         } else {
             // Caso (0,1)-(0,1) - Página 7: Vale cualquiera, miramos dónde la puso
             if (pk1en2) {
@@ -647,16 +675,16 @@ class Mapper {
 
         // 2. VALIDAR ATRIBUTOS DEL ROMBO (R1)
         for (const relAttr of rel.attributes) {
-            const hasAttr = tablaDestino.attributes.some(sa => sa.name.toLowerCase() === relAttr.name.toLowerCase());
+            const hasAttr = tablaDestino.attributes.find(sa => sa.name.toLowerCase() === relAttr.name.toLowerCase());
             if (!hasAttr) {
-                return { isCorrect: false, message: `ERROR: El atributo '${relAttr.name}' de la relación debe estar en la tabla '${nombreTablaOrigen}' junto a la FK.` };
+                return { isCorrect: false, message: `ERROR: El atributo '${relAttr.name}' de la relación debe estar en la tabla '${tablaDestino.name}' junto a la FK.` };
             }
-            hasAtrr.isValidated=true;
+            hasAttr.isValidated=true;
         }
 
-        // 3. Validar que no sea PK
-        if (fkEncontrada.isPK) {
-            return { isCorrect: false, message: `ERROR: La clave foránea '${fkEncontrada.name}' no debe ser PK en '${nombreTablaOrigen}' (Págs 6-7).` };
+        // 3. Validar que no sea PK (Solo si la encontramos)
+        if (fkEncontrada && fkEncontrada.isPK) {
+            return { isCorrect: false, message: `ERROR: La clave foránea '${fkEncontrada.name}' no debe ser PK en '${tablaDestino.name}'` };
         }
 
         // ÉXITO: Borrar rombo
@@ -733,63 +761,61 @@ class Mapper {
 }
 
     
-    static map1NRelationship(baseER, studentRelational, runningRelational, rel) {
-        // 1. COMPROBACIÓN DE SEGURIDAD: ¿Existe rel?
-        if (!rel || !rel.participants) {
-            return null; 
-        }
-        const roles = rel.participants;
+  
+  static map1NRelationship(baseER, studentRelational, runningRelational, rel) {
+    const roles = rel.participants;
+    const roleN = roles.find(r => r.maxCardinality === 'N');
+    const role1 = roles.find(r => r.maxCardinality === '1');
+
+    if (!roleN || !role1) return null;
+
+    // TABLA DESTINO: El lado 1 recibe la clave del lado N
+    const studentTableDestino = studentRelational.relations.find(r => r.name === role1.entityName);
+    
+    // IMPORTANTE: Buscamos la tabla ORIGEN en "runningRelational" para obtener sus PKs reales
+    const tableOrigenER = runningRelational.relations.find(r => r.name === roleN.entityName);
+
+    if (!studentTableDestino || !tableOrigenER) return null;
+
+    // 1. VALIDAR ATRIBUTOS (La PK de N debe estar en 1)
+    // CAMBIO: Usamos .isPK en lugar de .isKey
+    const pksOrigen = tableOrigenER.attributes.filter(a => a.isPK);
+    
+    for (const pk of pksOrigen) {
+        const foundInDestino = studentTableDestino.attributes.find(sa => sa.name.toLowerCase() === pk.name.toLowerCase());
         
-
-        const roleN = roles.find(r => r.maxCardinality == 'N');
-        const role1 = roles.find(r => r.maxCardinality == '1');
-
-        // 2. EVITAR EL CRASH: Si no encuentra el 1 o el N, no seguimos
-        if (!roleN || !role1) {
-            return { 
-                isCorrect: false, 
-                message: `ERROR: Asegúrate de que la relación '${rel.label}' tenga marcadas las cardinalidades 1 y N.` 
-            };
+        if (!foundInDestino) {
+            return { isCorrect: false, message: `Falta la clave '${pk.name}' de '${roleN.entityName}' en la tabla '${role1.entityName}'.` };
         }
-       /* const roleN = roles.find(r => r.maxCardinality == 'N');
-        const role1 = roles.find(r => r.maxCardinality == '1');*/
 
-        const studentRelN = studentRelational.relations.find(r => r.name === roleN.entityName);
-        const runningRel1 = runningRelational.relations.find(r => r.name === role1.entityName);
-
-        if (!studentRelN || !runningRel1) return null;
+        foundInDestino.isValidated = true; // Sello de aprobación
         
-        const pksDelLado1 = runningRel1.attributes.filter(a => a.isKey);
-        // Comprobamos que TODAS las partes de la PK del lado 1 estén en el lado N
-        // studentRelN.attributes.filter(a => a.isPK)
-        for (const pk of pksDelLado1) {
-            const foundInN=runningRel1.attributes.find(sa => sa.name === pk.name);
-            if (!foundInN) {
-                return { isCorrect: false, message: `Falta la clave primaria de '${roleN.entityName}' en la tabla '${role1.entityName}' por la relación '${rel.label}'.` };
-            }
-            foundInN.isValidated=true;
-            // Regla: No debe ser PK en el lado N (a menos que sea entidad débil, pero eso va en otra función)
-            if (foundInN.isPK) {
-                return { 
-                    isCorrect: false, 
-                    message: `ERROR: El atributo '${pk.name}' no debe ser Clave Primaria en '${roleN.entityName}' (Relación 1:N).` 
-                };
-            }
+        if (foundInDestino.isPK) {
+            return { isCorrect: false, message: `ERROR: '${pk.name}' no debe ser PK en la tabla '${role1.entityName}' (es una relación 1:N).` };
         }
-        // 3. VALIDAR FK: ¿Ha dibujado la flecha de N hacia 1?
-        const tieneFK = runningRel1.fks.find(f => f.targetRelation === roleN.entityName);
-        if (!tieneFK) {
-            return { 
-                isCorrect: false, 
-                message: `ERROR: Falta definir la Clave Foránea (FK) en '${runningRel1.name}' apuntando a '${roleN.entityName}'.` 
-            };
-        }
-        tieneFK.isValidated=true;
-        
-        return Mapper.mapRelationshipAttributes(baseER, studentRelational, runningRelational, rel, runningRel1);
     }
+
+    // 2. VALIDAR LA FLECHA (FK)
+    const tieneFK = studentTableDestino.fks.find(f => f.targetRelation === roleN.entityName);
+    if (!tieneFK) {
+        return { isCorrect: false, message: `Falta la flecha de Clave Foránea (FK) desde '${role1.entityName}' hacia '${roleN.entityName}'.` };
+    }
+    tieneFK.isValidated = true;
+
+    // 3. VALIDAR ATRIBUTOS DEL ROMBO (R1)
+    const resAttributes = Mapper.mapRelationshipAttributes(baseER, studentRelational, runningRelational, rel, studentTableDestino);
+    if (resAttributes && !resAttributes.isCorrect) return resAttributes;
+
+    // FINAL: Si todo está bien, borramos la relación para que salga el "PERFECTO"
+    const relIdx = baseER.relationships.indexOf(rel);
+    if (relIdx !== -1) baseER.relationships.splice(relIdx, 1);
+
+    return null;
+}
+
     
     // --- PASO 5: RELACIONES M:N (como tu R3) ---
+    
     static mapMNRelationship(baseER, studentRelational, runningRelational, rel) {
         const studentTable = studentRelational.relations.find(r => r.name === rel.label);
 
@@ -825,47 +851,74 @@ class Mapper {
             }
             tieneFK.isValidated=true;
         }
+        
         runningRelational.relations.push(studentTable);
         // Atributos del rombo (si tuviera)
         return Mapper.mapRelationshipAttributes(baseER, studentRelational, runningRelational, rel, studentTable);
        
     }
     
-   /* static mapSpecializations (baseER, studentRelational, runningRelational) {
+  static mapSpecializations(baseER, studentRelational, runningRelational) {
         for (let i = baseER.specializations.length - 1; i >= 0; i--) {
             const spec = baseER.specializations[i];
-            const superRel = runningRelational.relations.find(r => r.name === spec.superclassEntityName);
-            if (!superRel) continue; // Esperamos a que la madre esté mapeada
+            const runningSuper = runningRelational.relations.find(r => r.name === spec.superclassEntityName);
+
+            // Esperamos a que la madre esté validada en runningRelational
+            if (!runningSuper) continue;
+
+            let algunaHijaDibujada = false;
+            const pksMadre = runningSuper.attributes.filter(a => a.isPK);
 
             for (const subName of spec.subclassEntityNames) {
-                const studentSub = studentRelational.relations.find(r => r.name === subName);
-                if (!studentSub) return {isCorrect: false, message: Mapper.msg('MISSING_RELATION', [subName])};
+                const subTable = studentRelational.relations.find(r => r.name === subName);
+                const entityHijaER = baseER.entities.find(e => e.name === subName);
+
+                if (!subTable) continue;
                 
-                // Borramos la entidad hija del ER para avanzar
-                const entIdx = baseER.entities.findIndex(e => e.name === subName);
-                if (entIdx !== -1) baseER.entities.splice(entIdx, 1);
+                algunaHijaDibujada = true;
+                 
+
+                // 1. Validar PK heredada
+                for (const pk of pksMadre) {
+                    const foundInHija = subTable.attributes.find(sa => sa.name === pk.name);
+                    if (!foundInHija || !foundInHija.isPK) {
+                        return { isCorrect: false, message: `ERROR: La subclase '${subName}' debe heredar la PK '${pk.name}' de la superclase.` };
+                    }
+                    foundInHija.isValidated = true;
+                }
+
+                // 2. Validar FK hacia la madre
+                const tieneFK = subTable.fks.find(f => f.targetRelation === spec.superclassEntityName);
+                if (!tieneFK) {
+                    return { isCorrect: false, message: `ERROR: Falta la FK en '${subName}' apuntando a '${spec.superclassEntityName}'.` };
+                }
+                tieneFK.isValidated = true;
+
+                // 3. Validar atributos propios de la hija (esto te faltaba)
+                if (entityHijaER) {
+                    for (const attr of entityHijaER.attributes) {
+                        const found = subTable.attributes.find(sa => sa.name === attr.name);
+                        if (found) found.isValidated = true;
+                    }
+                    // Borramos la entidad hija para que el contador de baseER baje
+                    const eIdx = baseER.entities.indexOf(entityHijaER);
+                    baseER.entities.splice(eIdx, 1);
+                }
                 
-                // Añadimos una relación vacía al "running" para indicar que ya está procesada
-                runningRelational.relations.push({name: subName, attributes: [], fks: []});
-            }
-            baseER.specializations.splice(i, 1);
-        }
-        return null;
-    }*/
-    static mapSpecializations (baseER, studentRelational, runningRelational) {
-        for (let i = baseER.specializations.length - 1; i >= 0; i--) {
-            const spec = baseER.specializations[i];
-            // Buscamos si la tabla de la madre ya ha sido creada en runningRelational
-            const superRel = runningRelational.relations.find(r => r.name === spec.superclassEntityName);
+               
             
-            if (superRel) {
-                // Si la madre ya está, borramos la especialización de la lista de tareas
-                baseER.specializations.splice(i, 1);
+                if (!runningRelational.relations.find(r => r.name === subName)) {
+                    runningRelational.relations.push(subTable);
+                }
             }
+
+            
+            baseER.specializations.splice(i, 1);
+            
         }
         return null;
     }
-  
+    
     static mapCategories (baseER, studentRelational, runningRelational) {
         for(const cat of baseER.categories){
             const catName = cat.categoryEntityName

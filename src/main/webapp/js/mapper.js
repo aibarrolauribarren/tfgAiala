@@ -13,23 +13,25 @@ class Mapper {
                 safety++;
                 let totalBefore = baseER.entities.length + baseER.relationships.length + baseER.specializations.length + baseER.categories.length;
                 
-                result = Mapper.mapMultivaluedAttributes(baseER, studentRelational, runningRelational)
-                if (result != null) return result
-
-                result = Mapper.mapStrongEntities(baseER, studentRelational, runningRelational)
+                 
+                result = Mapper.mapCategories(baseER, studentRelational, runningRelational)
                 if (result != null) return result
                 
+                result = Mapper.mapSpecializations(baseER, studentRelational, runningRelational)
+                if (result != null) return result
+                
+                result = Mapper.mapMultivaluedAttributes(baseER, studentRelational, runningRelational)
+                if (result != null) return result
+                
+                result = Mapper.mapStrongEntities(baseER, studentRelational, runningRelational)
+                if (result != null) return result
+                              
                 result = Mapper.mapWeakEntities(baseER, studentRelational, runningRelational)
                 if (result != null) return result
                                                
                 result = Mapper.mapRelationships(baseER, studentRelational, runningRelational)
                 if (result != null) return result
-                                
-                result = Mapper.mapSpecializations(baseER, studentRelational, runningRelational)
-                if (result != null) return result
-                
-                result = Mapper.mapCategories(baseER, studentRelational, runningRelational)
-                if (result != null) return result
+                                           
 
                 let totalAfter = baseER.entities.length + baseER.relationships.length + baseER.specializations.length + baseER.categories.length;
                 
@@ -832,14 +834,18 @@ class Mapper {
             
             for (const pk of pksDelER) {
                 const foundInTable = studentTable.attributes.find(sa => sa.name === pk.name);
-                if (!foundInTable || !foundInTable.isPK) {
+                     message: `ERROR: En la relación '${rel.label}', falta la clave foránea (FK) apuntando a '${participant.entityName}'.` ;
+             };
+                
+            
+            if (!foundInTable || !foundInTable.isPK) {
                     return { 
                         isCorrect: false, 
                         message: `ERROR: La tabla '${rel.label}' debe tener '${pk.name}' como parte de su Clave Primaria.` 
                     };
                 }
-                foundInTable.isValidated=true;
-            }
+            foundInTable.isValidated=true;
+        
             
             // 2. VALIDAR FK (La flechita hacia cada participante)
             const tieneFK = studentTable.fks.find(f => f.targetRelation === participant.entityName);
@@ -852,221 +858,663 @@ class Mapper {
             tieneFK.isValidated=true;
         }
         
+        
         runningRelational.relations.push(studentTable);
         // Atributos del rombo (si tuviera)
         return Mapper.mapRelationshipAttributes(baseER, studentRelational, runningRelational, rel, studentTable);
-       
+        
     }
     
-  static mapSpecializations(baseER, studentRelational, runningRelational) {
-        for (let i = baseER.specializations.length - 1; i >= 0; i--) {
-            const spec = baseER.specializations[i];
-            const runningSuper = runningRelational.relations.find(r => r.name === spec.superclassEntityName);
+    static mapSpecializations(baseER, studentRelational, runningRelational) {
+    for (let i = baseER.specializations.length - 1; i >= 0; i--) {
+        const spec = baseER.specializations[i];
+        
+        // 1. Identificar elementos en el esquema del alumno
+        const tableMadre = studentRelational.relations.find(r => r.name.toLowerCase() === spec.superclassEntityName.toLowerCase());
+        const tablesHijas = studentRelational.relations.filter(r => 
+            spec.subclassEntityNames.some(subName => subName.toLowerCase() === r.name.toLowerCase())
+        );
 
-            // Esperamos a que la madre esté validada en runningRelational
-            if (!runningSuper) continue;
+        const esSolapada = spec.labelText === 'o';
+        const esDisjunta = spec.labelText === 'd';
+        // PON ESTO AL PRINCIPIO DE LA FUNCIÓN mapSpecializations
+        if (!tableMadre && tablesHijas.length === 0) return null;
 
-            let algunaHijaDibujada = false;
-            const pksMadre = runningSuper.attributes.filter(a => a.isPK);
-
-            for (const subName of spec.subclassEntityNames) {
-                const subTable = studentRelational.relations.find(r => r.name === subName);
-                const entityHijaER = baseER.entities.find(e => e.name === subName);
-
-                if (!subTable) continue;
-                
-                algunaHijaDibujada = true;
-                 
-
-                // 1. Validar PK heredada
+        // --- ESTRATEGIA 1: TABLAS SEPARADAS (Opción A) ---
+        // Se detecta si el alumno ha dibujado la madre Y alguna hija
+        if (tableMadre && tablesHijas.length > 0) {
+            for (const subTable of tablesHijas) {
+                // Validar PK heredada (con toLowerCase)
+                const pksMadre = tableMadre.attributes.filter(a => a.isPK);
                 for (const pk of pksMadre) {
-                    const foundInHija = subTable.attributes.find(sa => sa.name === pk.name);
+                    const foundInHija = subTable.attributes.find(sa => sa.name.toLowerCase() === pk.name.toLowerCase());
                     if (!foundInHija || !foundInHija.isPK) {
-                        return { isCorrect: false, message: `ERROR: La subclase '${subName}' debe heredar la PK '${pk.name}' de la superclase.` };
+                        return { isCorrect: false, message: `Estrategia tablas separadas: '${subTable.name}' debe heredar la PK '${pk.name}'.` };
                     }
                     foundInHija.isValidated = true;
                 }
 
-                // 2. Validar FK hacia la madre
-                const tieneFK = subTable.fks.find(f => f.targetRelation === spec.superclassEntityName);
-                if (!tieneFK) {
-                    return { isCorrect: false, message: `ERROR: Falta la FK en '${subName}' apuntando a '${spec.superclassEntityName}'.` };
-                }
+                // Validar FK
+                const tieneFK = subTable.fks.find(f => f.targetRelation.toLowerCase() === spec.superclassEntityName.toLowerCase());
+                if (!tieneFK) return { isCorrect: false, message: `Falta FK en '${subTable.name}' a '${spec.superclassEntityName}'.` };
                 tieneFK.isValidated = true;
 
-                // 3. Validar atributos propios de la hija (esto te faltaba)
-                if (entityHijaER) {
-                    for (const attr of entityHijaER.attributes) {
-                        const found = subTable.attributes.find(sa => sa.name === attr.name);
-                        if (found) found.isValidated = true;
+                // Limpiar entidades hijas de pendientes
+                baseER.entities = baseER.entities.filter(e => e.name.toLowerCase() !== subTable.name.toLowerCase());
+                if (!runningRelational.relations.find(r => r.name === subTable.name)) runningRelational.relations.push(subTable);
+            }
+
+            // Si es Total, deben estar todas las hijas
+            if (spec.isTotal && tablesHijas.length < spec.subclassEntityNames.length) {
+                return { isCorrect: false, message: `Herencia TOTAL: faltan subclases por representar.` };
+            }
+
+            baseER.specializations.splice(i, 1);
+            continue;
+        }
+        
+        // --- ESTRATEGIA 2: SOLO TABLAS HIJAS (Opción B) ---
+        // Se detecta si hay hijas pero NO hay madre
+        else if (!tableMadre && tablesHijas.length > 0) {
+            if (!spec.isTotal || spec.allowsOverlapping) { // (Opcional: check si la jerarquía permite esto)
+                 // Si no es Total, esta estrategia suele dar problemas de pérdida de datos, pero si el alumno la hace:
+            }
+
+            const superEntityER = baseER.entities.find(e => e.name.toLowerCase() === spec.superclassEntityName.toLowerCase());
+            for (const subTable of tablesHijas) {
+                if (superEntityER) {
+                    for (const attr of superEntityER.attributes) {
+                        const found = subTable.attributes.find(sa => sa.name.toLowerCase() === attr.name.toLowerCase());
+                        if (!found) return { isCorrect: false, message: `Opción B: '${subTable.name}' debe incluir '${attr.name}' de la superclase.` };
+                        if (attr.isKey && !found.isPK) return { isCorrect: false, message: `'${attr.name}' debe ser PK en '${subTable.name}'.` };
+                        found.isValidated = true;
                     }
-                    // Borramos la entidad hija para que el contador de baseER baje
-                    const eIdx = baseER.entities.indexOf(entityHijaER);
-                    baseER.entities.splice(eIdx, 1);
                 }
+                baseER.entities = baseER.entities.filter(e => e.name.toLowerCase() !== subTable.name.toLowerCase());
+                if (!runningRelational.relations.find(r => r.name === subTable.name)) runningRelational.relations.push(subTable);
+            }
+
+            baseER.entities = baseER.entities.filter(e => e.name.toLowerCase() !== spec.superclassEntityName.toLowerCase());
+            baseER.specializations.splice(i, 1);
+            continue;
+        }
+
+/*
+        if(esSolapada && !spec.isTotal){
+            if (!tableMadre) continue;
+             // Validar cada hija dibujada
+                for (const subTable of tablesHijas) {
+                    // A. La PK de la madre debe estar en la hija y ser PK
+                    const pksMadre = tableMadre.attributes.filter(a => a.isPK);
+                    for (const pk of pksMadre) {
+                        const foundInHija = subTable.attributes.find(sa => sa.name === pk.name);
+                        if (!foundInHija || !foundInHija.isPK) {
+                            return { isCorrect: false, message: `Estrategia de tablas separadas: La subclase '${subTable.name}' debe heredar la PK '${pk.name}' de la superclase.` };
+                        }
+                        foundInHija.isValidated = true;
+                    }
+
+                    // B. Debe haber una FK de la hija a la madre
+                    const tieneFK = subTable.fks.find(f => f.targetRelation.toLowerCase() === spec.superclassEntityName.toLowerCase());
+                    if (!tieneFK) {
+                        return { isCorrect: false, message: `Falta la FK en '${subTable.name}' apuntando a '${spec.superclassEntityName}'.` };
+                    }
+                    tieneFK.isValidated = true;
+
+                    // C. Validar atributos propios de esta hija
+                    const entityHijaER = baseER.entities.find(e => e.name.toLowerCase() === subTable.name.toLowerCase());
+                    if (entityHijaER) {
+                        entityHijaER.attributes.forEach(attr => {
+                            const f = subTable.attributes.find(sa => sa.name === attr.name);
+                            if (f) f.isValidated = true;
+                        });
+                        // Eliminar entidad de la lista de pendientes
+                        baseER.entities = baseER.entities.filter(e => e.name.toLowerCase() !== subTable.name.toLowerCase());
+                    }
+
+                    if (!runningRelational.relations.find(r => r.name === subTable.name)) runningRelational.relations.push(subTable);
+                }
+
+                // Validación de Totalidad: Si es TOTAL (línea doble), deben estar TODAS las hijas
+                if (spec.isTotal && tablesHijas.length < spec.subclassEntityNames.length) {
+                    // Si el alumno no ha dibujado más tablas, es error de totalidad
+                    if (studentRelational.relations.length === runningRelational.relations.length + 1) { // +1 por la madre
+                        return { isCorrect: false, message: `La herencia de '${spec.superclassEntityName}' es TOTAL. Faltan subclases por representar.` };
+                    }
+                    continue; 
+                }
+
+                baseER.specializations.splice(i, 1);
+                continue;
+        }else if (spec.isTotal && (esDisjunta||esSolapada)) {// OPCION B: HERENCIA TOTAL Y DISJUNTA (Pág 22-23 PDF - Tu ejercicio de la foto) ---
+                    
+            if (tableMadre) {
+                return { 
+                    isCorrect: false, 
+                    message: `ERROR: La herencia de '${spec.superclassEntityName}' es TOTAL y DISJUNTA. Según el estándar, no debe existir la tabla '${spec.superclassEntityName}'; sus atributos deben estar en las subclases.` 
+                };
+            }
+
+            const superEntityER = baseER.entities.find(e => e.name.toLowerCase() === spec.superclassEntityName.toLowerCase());
+            let todasHijasDibujadas = true;
+
+            for (const subName of spec.subclassEntityNames) {
+                const subTable = studentRelational.relations.find(r => r.name.toLowerCase() === subName.toLowerCase());
                 
-               
+                if (!subTable) {
+                    todasHijasDibujadas = false;
+                    continue; 
+                }
+                baseER.entities = baseER.entities.filter(e => e.name.toLowerCase() !== subName.toLowerCase()); // <<-- AÑADE ESTO AQUÍ
+                // Validar que la hija tenga TODOS los atributos de la superclase (DNI, Nombre, etc.)
+                if (superEntityER) {
+                    for (const attr of superEntityER.attributes) {
+                        const found = subTable.attributes.find(sa => sa.name.toLowerCase() === attr.name.toLowerCase());
+                        if (!found) return { isCorrect: false, message: `La tabla '${subTable.name}' debe incluir el atributo heredado '${attr.name}'.` };
+                        if (attr.isKey && !found.isPK){
+                                return { 
+                                isCorrect: false,
+                                 message: `El atributo '${attr.name}' debe ser PK en '${subTable.name}'.` };
+                        } else {
+                            // CASO B: NO es clave en el ER pero el alumno la ha puesto como PK (EL ERROR QUE TIENES)
+                            if (found.isPK && !attr.isKey) {
+                                return { 
+                                    isCorrect: false, 
+                                    message: `Error en '${subTable.name}': El atributo heredado '${attr.name}' no puede ser Clave Primaria (solo lo es la clave de la superclase).` 
+                                };
+                            }
+
+                            found.isValidated = true;
+                        }
+                    }
+                }
+
+                // Validar atributos propios de la hija
+                const entityHijaER = baseER.entities.find(e => e.name.toLowerCase() === subName.toLowerCase());
+                if (entityHijaER) {
+                    for (const attrPropio of entityHijaER.attributes) {
+                        const f = subTable.attributes.find(sa => sa.name.toLowerCase() === attrPropio.name.toLowerCase());
+
+                        if (f) {
+                            // --- BLOQUEO DE PK INCORRECTA ---
+                            // Si el atributo es propio de la hija, NO puede ser PK
+                            if (f.isPK) {
+                                return { 
+                                    isCorrect: false, 
+                                    message: `Error en '${subTable.name}': El atributo propio '${f.name}' no puede ser Clave Primaria. En esta estrategia, la PK solo debe ser el atributo heredado de la superclase.` 
+                                };
+                            }
+                            f.isValidated = true;
+                        }
+                    }
+                    // Eliminamos la entidad hija de la lista de pendientes
+                    baseER.entities = baseER.entities.filter(e => e.name.toLowerCase() !== subName.toLowerCase());
+                }
+
+                if (!runningRelational.relations.find(r => r.name === subTable.name)) runningRelational.relations.push(subTable);
+            }
+
+            if (todasHijasDibujadas) {
+                baseER.entities = baseER.entities.filter(e => e.name.toLowerCase() !== spec.superclassEntityName.toLowerCase());
+                baseER.specializations.splice(i, 1);
+            }
+            continue; // Pasamos a la siguiente especialización
+        
+        }*/
+            else if (/*!spec.isTotal && esDisjunta*/tableMadre && tablesHijas.length===0){
+                // Si el alumno ha dibujado la tabla madre (aunque no haya hijas, porque es tabla ÚNICA)
+                if (tableMadre) { 
+                    const superEntityER = baseER.entities.find(e => e.name.toLowerCase() === spec.superclassEntityName.toLowerCase());
+
+                    // Buscamos el discriminador
+                    const discriminador = tableMadre.attributes.find(a => {
+                        const estaEnMadre = superEntityER?.attributes.some(ma => ma.name.toLowerCase() === a.name.toLowerCase());
+                        const estaEnHijas = spec.subclassEntityNames.some(subName => {
+                            const eH = baseER.entities.find(e => e.name.toLowerCase() === subName.toLowerCase());
+                            return eH?.attributes.some(ha => ha.name.toLowerCase() === a.name.toLowerCase());
+                        });
+                        return !estaEnMadre && !estaEnHijas;
+                    });
+
+                    // SI NO HAY DISCRIMINADOR, ERROR INMEDIATO
+                    if (!discriminador) {
+                        return { 
+                            isCorrect: false, 
+                            message: `Estrategia Tabla Única: En '${tableMadre.name}' falta el atributo DISCRIMINADOR (ej. PoS, Tipo).` 
+                        };
+                    }
+
+                    discriminador.isValidated = true;
+
+                    // 2. VALIDAR QUE ESTÉN TODOS LOS ATRIBUTOS DE TODAS LAS HIJAS
+                    for (const subName of spec.subclassEntityNames) {
+                        const entityHijaER = baseER.entities.find(e => e.name.toLowerCase() === subName.toLowerCase());
+                        if (entityHijaER) {
+                            for (const attrHija of entityHijaER.attributes) {
+                                const found = tableMadre.attributes.find(ma => ma.name.toLowerCase() === attrHija.name.toLowerCase());
+
+                                // --- CAMBIO CLAVE: Si falta un atributo de una hija en la tabla única, ERROR ---
+                                if (!found) {
+                                    return { 
+                                        isCorrect: false, 
+                                        message: `Estrategia Tabla Única: La tabla '${tableMadre.name}' debe incluir el atributo '${attrHija.name}' de la subclase '${subName}'.` 
+                                    };
+                                }
+                                // --- CAMBIO CLAVE: Los atributos de las hijas NO pueden ser PK en Tabla Única ---
+                                if (found.isPK) {
+                                    return {
+                                        isCorrect: false,
+                                        message: `Error en '${tableMadre.name}': El atributo '${found.name}' proviene de una subclase y NO debe ser Clave Primaria en la Estrategia de Tabla Única.`
+                                    };
+                                }
+                                found.isValidated = true;
+                            }
+                            // Una vez validados sus atributos, quitamos la entidad hija de pendientes
+                            baseER.entities = baseER.entities.filter(e => e.name.toLowerCase() !== subName.toLowerCase());
+                        }
+                    }
+
+                    // 3. VALIDAR ATRIBUTOS DE LA MADRE (DNI, Nombre...)
+                    if (superEntityER) {
+                        superEntityER.attributes.forEach(attr => {
+                            const found = tableMadre.attributes.find(a => a.name.toLowerCase() === attr.name.toLowerCase());
+                            if (found) found.isValidated = true;
+                        });
+                    }
+
+                    // 4. FINALIZAR
+                    baseER.entities = baseER.entities.filter(e => e.name.toLowerCase() !== spec.superclassEntityName.toLowerCase());
+                    baseER.specializations.splice(i, 1);
+                    if (!runningRelational.relations.find(r => r.name === tableMadre.name)) {
+                        runningRelational.relations.push(tableMadre);
+                    }
+                    continue;
+
+                }
+        }
+        
+    }
+    return null;
+}   
+    
+    static mapSpecializations(baseER, studentRelational, runningRelational) {
+    for (let i = baseER.specializations.length - 1; i >= 0; i--) {
+        const spec = baseER.specializations[i];
+        
+        // 1. Identificar tablas del alumno (Insensible a mayúsculas)
+        const tableMadre = studentRelational.relations.find(r => r.name.toLowerCase() === spec.superclassEntityName.toLowerCase());
+        const tablesHijas = studentRelational.relations.filter(r => 
+            spec.subclassEntityNames.some(subName => subName.toLowerCase() === r.name.toLowerCase())
+        );
+
+        // Si no ha dibujado nada de esta herencia, saltamos a la siguiente
+        if (!tableMadre && tablesHijas.length === 0) continue;
+
+        const esSolapada = spec.allowsOverlapping === true || (spec.labelText && spec.labelText.toLowerCase() === 'o');
+        const esDisjunta = !esSolapada;
+        const esTotal = spec.isTotal;
+
+        if(esTotal && esDisjunta){ //opcion b, dos rayas y d
+            if(tableMadre){
+                return { isCorrect: false, message: `El diagrama es TOTAL y DISJUNTO. Según la regla, la tabla '${spec.superclassEntityName}' no debe existir. Borra esa tabla y pasa sus atributos a las subclases.` };
             
-                if (!runningRelational.relations.find(r => r.name === subName)) {
+            }
+            
+            // 2. Validar que estén TODAS las hijas
+            if (tablesHijas.length < spec.subclassEntityNames.length) {
+                const faltan = spec.subclassEntityNames.filter(n => !tablesHijas.some(t => t.name.toLowerCase() === n.toLowerCase()));
+                return { isCorrect: false, message: `Faltan las tablas de las subclases: ${faltan.join(', ')}.` };
+            }
+            
+            const superEntityER = baseER.entities.find(e => e.name.toLowerCase() === spec.superclassEntityName.toLowerCase());
+            
+            for (const subTable of tablesHijas) {
+                // Validar que hereda todos los atributos de la superclase
+                if (superEntityER) {
+                    for (const attr of superEntityER.attributes) {
+                        const found = subTable.attributes.find(sa => sa.name.toLowerCase() === attr.name.toLowerCase());
+                        if (!found) return { isCorrect: false, message: `La tabla '${subTable.name}' debe incluir el atributo heredado '${attr.name}'.` };
+                        
+                        if (attr.isKey && !found.isPK) {
+                            return { isCorrect: false, message: `El atributo '${attr.name}' debe ser PK en '${subTable.name}'.` };
+                        }
+                        if (found.isPK && !attr.isKey) {
+                            return { isCorrect: false, message: `Error en '${subTable.name}': El atributo heredado '${attr.name}' no puede ser Clave Primaria.` };
+                        }
+                        found.isValidated = true;
+                    }
+                }
+
+                // Validar atributos propios y quitar entidad de pendientes
+                const entityHijaER = baseER.entities.find(e => e.name.toLowerCase() === subTable.name.toLowerCase());
+                if (entityHijaER) {
+                    for (const attrPropioER of entityHijaER.attributes) {
+                        const f = subTable.attributes.find(sa => sa.name.toLowerCase() === attrPropioER.name.toLowerCase());
+                        if (!f) {
+                            return { isCorrect: false, message: `Falta el atributo propio '${attrPropioER.name}' en la tabla '${subTable.name}'.` };
+                        }
+                        if (!attrPropioER.isKey && f.isPK) {
+                            return { 
+                                isCorrect: false, 
+                                message: `Error en '${subTable.name}': El atributo propio '${f.name}' NO debe ser Clave Primaria (PK).` 
+                            };
+                        }
+                        f.isValidated = true;
+                    }
+                    baseER.entities = baseER.entities.filter(e => e.name.toLowerCase() !== subTable.name.toLowerCase());
+                }
+
+                if (!runningRelational.relations.find(r => r.name === subTable.name)) {
                     runningRelational.relations.push(subTable);
                 }
             }
 
-            
-            baseER.specializations.splice(i, 1);
-            
+            // Si están todas las hijas, eliminamos la madre y la especialización
+            if (tablesHijas.length === spec.subclassEntityNames.length) {
+                baseER.entities = baseER.entities.filter(e => e.name.toLowerCase() !== spec.superclassEntityName.toLowerCase());
+                baseER.specializations.splice(i, 1);
+            }
+            continue;
+             
         }
-        return null;
-    }
-    
-    static mapCategories (baseER, studentRelational, runningRelational) {
-        for(const cat of baseER.categories){
-            const catName = cat.categoryEntityName
-            const superNames = cat.superclassEntityNames
-            const type = cat.type || 'U'
-            const isTtal=cat.isTotal
+
+        // --- OPCIÓN A ---
+        else if (!esTotal && esSolapada) {
+            if(!tableMadre){
+               return { isCorrect: false, message: `La tabla '${spec.superclassEntityName}' debe existir.` };
             
-            const catRel = studentRelational.relations.find(r=> r.name==catName)
-            
-            //existe categoria
-            if(catRel == null){
-                return {isCorrect:false, message: Mapper.msg('MISSIN_CATEGORY_RELATION', [catName])}
             }
-            
-            //obtener superclases y sus PK
-            const superRels=[]
-            
-            for(const superName of superNames){
-                const superRel=studentRelational.relations.find(r => r.name == superName)
-                if(superRel ==null){
-                    return {isCorrect:false, message:Mapper.msg('MISSING_SUPERCLASS_RELATION', [superName])}
+            // 1. VALIDAR ATRIBUTOS DE LA MADRE (Comparando la tabla del alumno con el ER) 
+            const superEntityER = baseER.entities.find(e => e.name.toLowerCase() === spec.superclassEntityName.toLowerCase());
+            if (superEntityER) {
+                for (const attrER of superEntityER.attributes) {
+                    const foundInTable = tableMadre.attributes.find(a => a.name.toLowerCase() === attrER.name.toLowerCase());
+                    if (!foundInTable) {
+                        return { isCorrect: false, message: `La tabla '${tableMadre.name}' debe tener el atributo '${attrER.name}'.` };
+                    }
+                    // Si en el ER es clave, en la tabla debe ser PK
+                    if (attrER.isKey && !foundInTable.isPK) {
+                        return { isCorrect: false, message: `El atributo '${attrER.name}' debe ser Clave Primaria en '${tableMadre.name}'.` };
+                    }
+                    if(!attrER.isKey && foundInTable.isPK){
+                        return { isCorrect: false, message: `El atributo '${attrER.name}' no debe ser Clave Primaria en '${tableMadre.name}'.` };
+                    }
+                    foundInTable.isValidated = true;
                 }
-                
-                const superPK = superRel.attributes.filter(a => a.isPK)
-                
-                if(superPK.length == 0){
-                    return {isCorrect:false, message:Mapper.msg('MISSING_PK', [superName])}
-                }
-                
-                superRels.push({name:superName, pk: superPK})
             }
-            
-            //PK de la categoria
-            const catPK = catRel.attributes.filter(a=> a.isPK)
-            
-            if(catPK.length == 0){
-                 return {isCorrect:false, message: Mapper.msg('MISSING_PK', [catName])}
-            }
-            
-            
-            //diferencias c,d,u
-            let validPK = false
-            if(type=='U'){
-                for (const superRel of superRels){
-                    const match = superRel.pk.every(pkAttr => catPK.find(a => a.name == pkAttr.name) != null) && superRel.pk.length == catPK.length
                     
-                    if(match){
-                        validPK = true
-                        break
-                    }
-                }
-                if (!validPK){
-                     return {isCorrect:false, message:Mapper.msg('WRONG_PK', [catName])}   
-                }
-            }
-            
-            else if (type=='D'){
-                let matchCount =0
-                for(const superRel of superRels){
-                    const match = superRel.pk.every(pkAttr => catPK.find(a => a.name == pkAttr.name) != null) && superRel.pk.length == catPK.length
-                    if(match){
-                        matchCount++
-                    }
-                }
-                if(matchCount !==1){
-                    return{
-                        isCorrect:false,
-                        message: Mapper.msg('CATEGORY_DISJOINT_ERROR', [catName])
-                    }
-                }
-                validPK=true
-            }
-            else if(type=='C'){
-                //deben incluir todas las PKs
-                const allPK = superRels.flatMap(s=> s.pk)
-                
-                const match = allPK.every(pkAttr => catPK.find (a => a.name == pkAttr.name) !=null)
-                
-                if(!match || catPK.length != allPK.length){
-                    return{
-                        isCorrect:false,
-                        message: Mapper.msg('CATEGORY_COMMON_ERROR', [catName])
-                    }
-                }
-                
-                validPK = true
-            }
-            
-            //validar FK
-            let fkCount=0
-            
-            for(const superRel of superRels){
-                const fk = catRel.fks.find(fk => fk.targetRelation == superRel.name)
-                
-                if(fk){
-                    fkCount++
-                    for(const pkAttr of superRel.pk){
-                        if(!fk.attributes.includes(pkAttr.name)){
-                            return{
-                                isCorrect:false,
-                                message:Mapper.msg('WRONG_FK_IN_CATEGORY', [catName, pkAttr.name])
-                            }
+            for (const subTable of tablesHijas) {
+                //validar que hay esa subclase
+                if(!subTable){
+                    return { isCorrect: false, message: `Falta la tabla '${spec.subclassEntityName}' debe existir.` };
+                }else{
+                    const pksMadre = tableMadre.attributes.filter(a => a.isPK);
+                    for (const pk of pksMadre) {
+                        const foundInHija = subTable.attributes.find(sa => sa.name.toLowerCase() === pk.name.toLowerCase());
+                        if (!foundInHija || !foundInHija.isPK) {
+                            return { isCorrect: false, message: `Estrategia de tablas separadas: La subclase '${subTable.name}' debe heredar la PK '${pk.name}' de la superclase.` };
                         }
+                        foundInHija.isValidated = true;
                     }
                 }
-            }
-            
-            //segun el tipo
-            if(type =='D' && fkCount>1){
-               return{
-                   isCorrect:false,
-                   message: Mapper.msg('CATEGORY_DISJOINT_FK_ERROR', [catName])
-               }
-            }
-            if(type =='C' && fkCount!= superRels.length){
-               return{
-                   isCorrect:false,
-                   message: Mapper.msg('CATEGORY_COMMON_FK_ERROR', [catName])
-               }
-            }
-            
-            if(type =='U' && fkCount==0){
-               return{
-                   isCorrect:false,
-                   message: Mapper.msg('CATEGORY_UNION_FK_ERROR', [catName])
-               }
-            }
-            
-            //total o parcial
-            if(isTotal){
-                //debe haber FK
-                if(fkCount ==0){
-                    return {
-                      isCorrect:false,
-                      message: Mapper.msg('CATEGORY_TOTAL_ERROR', [catName])
-                    }
+                const tieneFK = subTable.fks.find(f => f.targetRelation.toLowerCase() === spec.superclassEntityName.toLowerCase());
+                if (!tieneFK) {
+                    return { isCorrect: false, message: `Falta la FK en '${subTable.name}' apuntando a '${spec.superclassEntityName}'.` };
                 }
+                tieneFK.isValidated = true; 
             }
-            
-            //eliminar categoria
-            
-            const pos = baseER.categories.indexOf(cat)
-            baseER.categories.splice(pos,1)
-            
+           
+             // C. Validar atributos propios y limpiar entidad de pendientes
+                const entityHijaER = baseER.entities.find(e => e.name.toLowerCase() === subTable.name.toLowerCase());
+                if (entityHijaER) {
+                    entityHijaER.attributes.forEach(attr => {
+                        const f = subTable.attributes.find(sa => sa.name.toLowerCase() === attr.name.toLowerCase());
+                        if (f) f.isValidated = true;
+                    });
+                    // IMPORTANTE: Borrar la entidad hija para que mapStrongEntities no la reclame
+                    baseER.entities = baseER.entities.filter(e => e.name.toLowerCase() !== subTable.name.toLowerCase());
+                }
+
+                if (!runningRelational.relations.find(r => r.name === subTable.name)) {
+                    runningRelational.relations.push(subTable);
+                }
+           
+            baseER.specializations.splice(i, 1);
+            continue;
+     
         }
-        return null
+        else if(!esTotal && esDisjunta){
+            if (tablesHijas.length >0) {
+                return { isCorrect: false, message: `No deberia de haber tablas hijas` };
+            }
+            
+            // 1. VALIDAR ATRIBUTOS DE LA MADRE (Comparando la tabla del alumno con el ER) 
+            const superEntityER = baseER.entities.find(e => e.name.toLowerCase() === spec.superclassEntityName.toLowerCase());
+            if (superEntityER) {
+                for (const attrER of superEntityER.attributes) {
+                    const foundInTable = tableMadre.attributes.find(a => a.name.toLowerCase() === attrER.name.toLowerCase());
+                    if (!foundInTable) {
+                        return { isCorrect: false, message: `La tabla '${tableMadre.name}' debe tener el atributo '${attrER.name}'.` };
+                    }
+                    // Si en el ER es clave, en la tabla debe ser PK
+                    if (attrER.isKey && !foundInTable.isPK) {
+                        return { isCorrect: false, message: `El atributo '${attrER.name}' debe ser Clave Primaria en '${tableMadre.name}'.` };
+                    }
+                    if(!attrER.isKey && foundInTable.isPK){
+                        return { isCorrect: false, message: `El atributo '${attrER.name}' no debe ser Clave Primaria en '${tableMadre.name}'.` };
+                    }
+                    foundInTable.isValidated = true;
+                }
+            }
+            
+            // 2. VALIDAR ATRIBUTOS DE LAS SUBCLASES (Las hijas)
+            // Recorremos los nombres de las hijas que vienen en el diagrama (spec.subclassEntityNames)
+            for (const subName of spec.subclassEntityNames) {
+                const entityHijaER = baseER.entities.find(e => e.name.toLowerCase() === subName.toLowerCase());
+
+                if (entityHijaER) {
+                    for (const attrHijaER of entityHijaER.attributes) {
+                        // Buscamos el atributo de la hija dentro de la tabla única (madre)
+                        const found = tableMadre.attributes.find(a => a.name.toLowerCase() === attrHijaER.name.toLowerCase());
+
+                        if (!found) {
+                            return { isCorrect: false, message: `La tabla única '${tableMadre.name}' debe incluir el atributo '${attrHijaER.name}' de la subclase '${subName}'.` };
+                        }
+
+                        // En la Opción C, los atributos de las hijas NUNCA son PK
+                        if (found.isPK) {
+                            return { isCorrect: false, message: `En la Opción C, el atributo '${found.name}' de la subclase no puede ser Clave Primaria.` };
+                        }
+
+                        found.isValidated = true;
+                    }
+                    // Tachamos la entidad hija del ER para que no se procese luego
+                    baseER.entities = baseER.entities.filter(e => e.name.toLowerCase() !== subName.toLowerCase());
+                }
+            }
+            // 3. VALIDAR EL DISCRIMINADOR
+            // Es un atributo que el alumno ha puesto pero que NO existe en el diseño ER (ni en madre ni en hijas)
+            const discriminador = tableMadre.attributes.find(a => !a.isValidated);
+
+            if (!discriminador) {
+                return { isCorrect: false, message: `Falta el atributo DISCRIMINADOR en la tabla '${tableMadre.name}' para distinguir entre las subclases.` };
+            }
+
+            // Si lo encontramos, lo marcamos como válido
+            discriminador.isValidated = true;
+
+            // Finalizamos la especialización
+            baseER.entities = baseER.entities.filter(e => e.name.toLowerCase() !== spec.superclassEntityName.toLowerCase());
+            if (!runningRelational.relations.find(r => r.name === tableMadre.name)) {
+                runningRelational.relations.push(tableMadre);
+            }
+            baseER.specializations.splice(i, 1);
+            continue;
+        }
+           
+        // --- OPCIÓN C: TABLA ÚNICA (Solo tabla MADRE) ---
+        else if (tableMadre && tablesHijas.length === 0) {
+            const superEntityER = baseER.entities.find(e => e.name.toLowerCase() === spec.superclassEntityName.toLowerCase());
+
+            // 1. COMPROBACIÓN DE INTENCIÓN: 
+            // Si no hay discriminador Y no hay ni un solo atributo de las hijas...
+            // ¡Es que se ha olvidado de las tablas hijas (Opción A)!
+            const tieneAtributosDeHijas = spec.subclassEntityNames.some(subName => {
+                const ent = baseER.entities.find(e => e.name.toLowerCase() === subName.toLowerCase());
+                return ent?.attributes.some(ha => tableMadre.attributes.some(ma => ma.name.toLowerCase() === ha.name.toLowerCase()));
+            });
+
+            // Buscamos si existe algo que parezca un discriminador
+            const tieneDiscriminador = tableMadre.attributes.some(a => {
+                const enMadreER = superEntityER?.attributes.some(ma => ma.name.toLowerCase() === a.name.toLowerCase());
+                const enCualquierHija = spec.subclassEntityNames.some(subName => {
+                    const ent = baseER.entities.find(e => e.name.toLowerCase() === subName.toLowerCase());
+                    return ent?.attributes.some(ha => ha.name.toLowerCase() === a.name.toLowerCase());
+                });
+                return !enMadreER && !enCualquierHija;
+            });
+
+            // Si no tiene nada de las hijas ni discriminador, es que faltan las tablas
+            if (!tieneAtributosDeHijas && !tieneDiscriminador) {
+                return { 
+                    isCorrect: false, 
+                    message: `Faltan las tablas de las subclases (${spec.subclassEntityNames.join(', ')}) o la tabla '${tableMadre.name}' debe incluir sus atributos y un discriminador si buscas la Opción C.` 
+                };
+            }
+
+            // 2. Si ha puesto algo de las hijas, entonces sí validamos la Opción C estrictamente
+            if (esSolapada) {
+                return { isCorrect: false, message: `La herencia es SOLAPADA. No puedes usar Tabla Única para '${tableMadre.name}'.` };
+            }
+            // 1. Validar DISCRIMINADOR
+            const discriminador = tableMadre.attributes.find(a => {
+                const enMadreER = superEntityER?.attributes.some(ma => ma.name.toLowerCase() === a.name.toLowerCase());
+                const enHijasER = spec.subclassEntityNames.some(subName => {
+                    const ent = baseER.entities.find(e => e.name.toLowerCase() === subName.toLowerCase());
+                    return ent?.attributes.some(ha => ha.name.toLowerCase() === a.name.toLowerCase());
+                });
+                return !enMadreER && !enHijasER;
+            });
+
+            if (!discriminador) {
+                return { isCorrect: false, message: `Estrategia Tabla Única: Falta el atributo DISCRIMINADOR en '${tableMadre.name}' para diferenciar las subclases.` };
+            }
+            discriminador.isValidated = true;
+
+            // 2. Validar atributos de TODAS las subclases en la tabla madre
+            for (const subName of spec.subclassEntityNames) {
+                const entityHijaER = baseER.entities.find(e => e.name.toLowerCase() === subName.toLowerCase());
+                if (entityHijaER) {
+                    for (const attrHija of entityHijaER.attributes) {
+                        const found = tableMadre.attributes.find(ma => ma.name.toLowerCase() === attrHija.name.toLowerCase());
+                        if (!found) {
+                            return { isCorrect: false, message: `Para Tabla Única, '${tableMadre.name}' debe incluir el atributo '${attrHija.name}' de la subclase '${subName}'.` };
+                        }
+                        found.isValidated = true;
+                    }
+                }
+            }
+
+            // 3. Validar atributos de la propia madre
+            if (superEntityER) {
+                for (const attrMadre of superEntityER.attributes) {
+                    const found = tableMadre.attributes.find(ma => ma.name.toLowerCase() === attrMadre.name.toLowerCase());
+                    if (!found) return { isCorrect: false, message: `Falta el atributo '${attrMadre.name}' en la tabla '${tableMadre.name}'.` };
+                    found.isValidated = true;
+                }
+            }
+
+            // --- SI LLEGAMOS AQUÍ, TODO ESTÁ BIEN: LIMPIAMOS EL ER ---
+            // Borramos las hijas del ER
+            spec.subclassEntityNames.forEach(subName => {
+                baseER.entities = baseER.entities.filter(e => e.name.toLowerCase() !== subName.toLowerCase());
+            });
+            // Borramos la madre del ER
+            baseER.entities = baseER.entities.filter(e => e.name.toLowerCase() !== spec.superclassEntityName.toLowerCase());
+            // Borramos la especialización de la lista
+            baseER.specializations.splice(i, 1);
+
+            if (!runningRelational.relations.find(r => r.name === tableMadre.name)) {
+                runningRelational.relations.push(tableMadre);
+            }
+            continue;
+        }
     }
+    return null;
 }
+static mapCategories(baseER, studentRelational, runningRelational) {
+    for (let i = baseER.categories.length - 1; i >= 0; i--) {
+        const cat = baseER.categories[i];
+        const tableHija = studentRelational.relations.find(r => r.name.toLowerCase() === cat.categoryEntityName.toLowerCase());
+        
+        if (!tableHija) continue;
+
+        // 1. RECOLECTAR TODAS LAS PKS DE TODOS LOS PADRES
+        // Buscamos en baseER.entities (el plano original del profesor)
+        let todasLasPKsDePadres = [];
+        cat.superclassEntityNames.forEach(mName => {
+            const entidad = baseER.entities.find(e => e.name.toLowerCase() === mName.toLowerCase());
+            if (entidad) {
+                const pks = entidad.attributes.filter(a => a.isKey).map(a => a.name.toLowerCase());
+                todasLasPKsDePadres.push(...pks);
+            }
+        });
+
+        // Eliminamos duplicados (si A y B tienen "K", solo queremos una "K")
+        const listaUnicaPKs = [...new Set(todasLasPKsDePadres)];
+
+        // 2. VALIDACIÓN DE LA PK (Aquí es donde obligamos a que aparezca la K)
+        if (listaUnicaPKs.length > 0) {
+            // Caso Imagen: Hay una PK común (K). La hija DEBE tenerla.
+            for (const nombrePK of listaUnicaPKs) {
+                const found = tableHija.attributes.find(a => a.name.toLowerCase() === nombrePK);
+                
+                if (!found || !found.isPK) {
+                    return { 
+                        isCorrect: false, 
+                        message: `La tabla '${tableHija.name}' debe heredar el atributo clave '${nombrePK.toUpperCase()}' de sus superclases y marcarlo como Clave Primaria (PK).` 
+                    };
+                }
+                found.isValidated = true;
+            }
+        } else {
+            // Caso sin PKs claras: exigimos PK propia
+            const pkPropia = tableHija.attributes.find(a => a.isPK);
+            if (!pkPropia) return { isCorrect: false, message: `La categoría '${tableHija.name}' necesita su propia PK.` };
+            pkPropia.isValidated = true;
+        }
+
+        // 3. VALIDAR LAS FKs (Las relaciones hacia A y B)
+        for (const mName of cat.superclassEntityNames) {
+            const tieneFK = tableHija.fks.find(f => f.targetRelation.toLowerCase() === mName.toLowerCase());
+            if (!tieneFK) {
+                return { isCorrect: false, message: `Falta la Clave Ajena (FK) en '${tableHija.name}' que apunta a '${mName}'.` };
+            }
+            tieneFK.isValidated = true;
+        }
+
+        // 4. ATRIBUTOS PROPIOS (C1)
+        const entityCatER = baseER.entities.find(e => e.name.toLowerCase() === cat.categoryEntityName.toLowerCase());
+        if (entityCatER) {
+            entityCatER.attributes.forEach(attrER => {
+                const f = tableHija.attributes.find(a => a.name.toLowerCase() === attrER.name.toLowerCase());
+                if (f) f.isValidated = true;
+            });
+            // Marcamos la entidad como procesada
+            baseER.entities = baseER.entities.filter(e => e.name.toLowerCase() !== cat.categoryEntityName.toLowerCase());
+        }
+
+        // 5. GUARDAR Y ELIMINAR CATEGORÍA PROCESADA
+        if (!runningRelational.relations.find(r => r.name === tableHija.name)) {
+            runningRelational.relations.push(tableHija);
+        }
+        baseER.categories.splice(i, 1);
+    }
+    return null;
+}
+
+}
+
 
 export {Mapper}
 

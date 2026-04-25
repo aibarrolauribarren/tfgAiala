@@ -55,7 +55,7 @@ class Editor {
     }
     return null
   }
-/* cleanERDiagram(erdFileContent) {
+ /*cleanERDiagram(erdFileContent) {
     const erd = { entities: [], relationships: [], specializations: [], categories: [] };
 
     // 1. PROCESAR HERENCIAS (Paso previo estático)
@@ -154,11 +154,11 @@ class Editor {
         }
     }
     return erd;
-}*/
+}
 processAttributeLink(erd, el, erdFileContent) {
     // Aquí pon tu lógica original de AttributeLink (la que ya tenías)
     // Pero asegúrate de que no usas el índice 'i', sino directamente 'el'
-}
+}*/
   cleanERDiagram (erdFileContent) {
     const erd = {entities: [], relationships: [], specializations: [], categories: []}
     // 2. Procesar Puntos de Conexión (El círculo de la herencia)
@@ -175,18 +175,42 @@ processAttributeLink(erd, el, erdFileContent) {
             };
 
             // Buscar la superclase conectada a este punto
-            const upLink = inheritanceLinks.find(l => l.target.id === cp.id && l.linkType === 'connection2superclass');
-            if (upLink) spec.superclassEntityName = upLink.source.labelText;
+           /* const upLink = inheritanceLinks.find(l => l.target.id === cp.id && l.linkType === 'connection2superclass');
+            if (upLink && upLink.subclass) spec.superclassEntityName = upLink.source.labelText;
 
             // Buscar las subclases conectadas
             const downLinks = inheritanceLinks.filter(l => l.target.id === cp.id && l.linkType === 'connection2subclass');
-            spec.subclassEntityNames = downLinks.map(l => l.source.labelText);
+            spec.subclassEntityNames = downLinks.map(l => l.source.labelText);*/
+                // Buscar la superclase conectada a este punto
+            const upLink = inheritanceLinks.find(l => l.target.id === cp.id && l.linkType === 'connection2superclass');
+            if (upLink) {
+                // IMPORTANTE: En el JSON de JointJS, el nombre está en 'subclass.labelText' del link
+                // o hay que buscar la entidad por ID. Lo más seguro es esto:
+                const superEnt = erdFileContent.cells.find(c => c.id === upLink.source.id);
+                if (superEnt) spec.superclassEntityName = superEnt.labelText;
+            }
 
-            erd.specializations.push(spec);
+            // Buscar las subclases conectadas
+            const downLinks = inheritanceLinks.filter(l => l.target.id === cp.id && l.linkType === 'connection2subclass');
+            spec.subclassEntityNames = downLinks.map(l => {
+                const subEnt = erdFileContent.cells.find(c => c.id === l.source.id);
+                return subEnt ? subEnt.labelText : "";
+            }).filter(name => name !== "");
+
+           // erd.specializations.push(spec);
+           if (spec.superclassEntityName) erd.specializations.push(spec);
         }
     });
         
         
+    // --- CRUCIAL: Eliminar los elementos de herencia antes del while para evitar BUCLE INFINITO ---
+    erdFileContent.cells = erdFileContent.cells.filter(c => 
+        c.type !== 'erd.ConnectionPoint' && 
+        c.type !== 'erd.InheritanceLink' &&
+        c.type !== 'erd.Specialization' &&
+        c.type !== 'erd.Category'
+    );
+    
     let i = 0
     while (erdFileContent.cells.length > 0){
       i = i % erdFileContent.cells.length
@@ -210,6 +234,7 @@ processAttributeLink(erd, el, erdFileContent) {
         // distinguir origen: entidad, relación, atributo
         let targetType = el.target.type
         let originType = el.source.type
+        
         if ((targetType == 'erd.Entity' && originType == 'erd.Attribute') || (originType == 'erd.Entity' && targetType == 'erd.Attribute')) {
           const entityEl = targetType == 'erd.Entity' ? el.target : el.source
           const attrEl =  targetType == 'erd.Attribute' ? el.target : el.source
@@ -232,6 +257,7 @@ processAttributeLink(erd, el, erdFileContent) {
             entity.attributes.push(attr)
           } 
           erdFileContent.cells.splice(i,1)
+          
         }
         else if ((targetType == 'erd.Relation' && originType == 'erd.Attribute') || (originType == 'erd.Relation' && targetType == 'erd.Attribute')) {         
           const relEl = targetType == 'erd.Relation' ? el.target : el.source
@@ -306,7 +332,7 @@ processAttributeLink(erd, el, erdFileContent) {
           }
           relationship.participants.push(participant)
         }
-        erdFileContent.cells.splice(i,1)
+        erdFileContent.cells.splice(i,1);
       }
         else if (el.type === 'erd.Specialization') {
           const specialization = {

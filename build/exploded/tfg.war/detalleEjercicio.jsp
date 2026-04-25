@@ -35,7 +35,7 @@
           
         %>
         
-            <%
+    <%--        <%
                 
                 String idEjercicio= request.getParameter("id");
                 int idE=0;
@@ -68,44 +68,93 @@
                 rs=ps.executeQuery();
                 %>
                  <h1>  Ejercicio <%=idE %></h1>
+              
                 <%
                 if(rs.next()){
+                    // Leemos el booleano directamente de la columna 'evaluable'
+                    boolean esEvaluable = rs.getBoolean("evaluable"); 
                 %>
-                <input type="hidden" name="id" value="<%=idE%>"><br><br>
-                
-                <%
-                    if ("profesor".equals(session.getAttribute("aRol"))){
-                 %>   
+                    <script>
+                        // Forzamos que se guarde como un booleano real en JS
+                        window.esEvaluable = <%= esEvaluable %>;
+                        console.log("Modo examen activo:", window.esEvaluable);
+                    </script>
+
+                    <input type="hidden" name="id" value="<%=idE%>">
+
+                    <%-- El resto de tus botones (Publicar, Ver Solución, etc) 
+
                 <input type="submit" name="submit" value="VER SOLUCION"><br><br>
                 <%
                     }
                 %>
                 <%
-                    }
+                    
                 }catch(SQLException ex){
                     ex.printStackTrace();      
                 
                 }
+            %> --%>
+            <%
+            String idEjercicio = request.getParameter("id");
+            int idE = 0;
+            if (idEjercicio != null) {
+                idE = Integer.parseInt(idEjercicio);
+                try {
+                    // Buscamos el ejercicio sin importar su visibilidad primero
+                    String uql = "select * from ejercicio where id=?";
+                    ps = conn.prepareStatement(uql);
+                    ps.setInt(1, idE);
+                    rs = ps.executeQuery();
+
+                    if (rs.next()) {
+                        // SACAMOS LOS DATOS
+                        boolean esEvaluable = rs.getBoolean("evaluable");
+                        String visibilidad = rs.getString("visibilidad");
+            %>
+                        <script>
+                            // Esto tiene que cargarse SÍ O SÍ
+                            window.esEvaluable = <%= esEvaluable %>;
+                            console.log("¿Es examen?:", window.esEvaluable);
+                        </script>
+
+                        <h1>Ejercicio <%=idE %></h1>
+                        <input type="hidden" name="id" value="<%=idE%>">
+
+                        <%-- Decidimos qué botón mostrar según la visibilidad --%>
+                        <% if ("no".equals(visibilidad)) { %>
+                            <input type="submit" name="submit" value="PUBLICAR EJERCICIO"><br><br>
+                        <% } else { %>
+                            <input type="submit" name="submit" value="VER SOLUCION"><br><br>
+                        <% } %>
+            <%
+                    }
+                } catch (SQLException ex) {
+                    ex.printStackTrace();
+                }
+            }
             %>
             
             <input type="submit" name="btnsubmit" value="TABLA EJERCICIOS" >
-           
-        </form>  
-                    <div id="container">
+       
+             </form> 
+         
+        <div id="container">
             <div id="erd_container"></div>
             <div id="relational_container">
-                <div id="schemaContainer">
-                </div>
+                <div id="schemaContainer"></div>
                 <div id="newRelation" class="button clickable">+ Relación</div>
-                <%--<div id="mapCheck" class="button clickable">Comprobar</div>--%>
+
                 <div id="bottomButtons">
-                    <div id="mapCheck">Comprobar</div>
+                    <div id="mapCheck" class="button clickable">Comprobar</div>
+
                     <button id="btnSiguiente" style="display:none;">
                         Siguiente ejercicio
                     </button>
                 </div>
             </div>
         </div>
+               
         <template id="relation_template">
             <div class="relation">
                 <div class="relationName"></div>

@@ -74,7 +74,7 @@ private Connection con;
         }
         if("TABLA EJERCICIOS".equals(request.getParameter("btnsubmit"))){
             
-            response.sendRedirect("Gestionador");
+            response.sendRedirect("Gestionador?submit=EJERCICIOS");
             return;
         }
         if("PAGINA ANTERIOR".equals(request.getParameter("btnsubmit"))){
@@ -114,7 +114,7 @@ private Connection con;
         }
         
         if("EJERCICIOS".equals(request.getParameter("submit"))){
-             ArrayList<ejercicioProf> listaP = new ArrayList<>();
+          /*   ArrayList<ejercicioProf> listaP = new ArrayList<>();
             try{
             String uql2= "Select * from ejercicio" ;
             st=con.createStatement();
@@ -132,7 +132,50 @@ private Connection con;
             request.setAttribute("listaP", listaP);
             
             request.getRequestDispatcher("tablaEjercicio.jsp").forward(request,response);
-            return;
+            return;*/
+           int idUsu = (Integer) session.getAttribute("aId");
+        
+        try {
+            // Primero consultamos el rol para saber qué tabla mostrar
+            String sqlRol = "Select rol from usuario where id=?";
+            ps = con.prepareStatement(sqlRol);
+            ps.setInt(1, idUsu);
+            rs = ps.executeQuery();
+            
+            if (rs.next()) {
+                String rolUsu = rs.getString("rol");
+                
+                if ("profesor".equals(rolUsu)) {
+                    // Lógica de Profesor (Ver todos)
+                    ArrayList<ejercicioProf> listaP = new ArrayList<>();
+                    String sqlP = "Select * from ejercicio";
+                    st = con.createStatement();
+                    ResultSet rsP = st.executeQuery(sqlP);
+                    while (rsP.next()) {
+                        listaP.add(new ejercicioProf(rsP.getInt("id"), rsP.getString("visibilidad"), rsP.getBoolean("evaluable")));
+                    }
+                    request.setAttribute("listaP", listaP);
+                } else {
+                    // Lógica de Alumno (Ver solo visibles y su estado)
+                    ArrayList<ejercicio> listaVisible = new ArrayList<>();
+                    String sqlA = "Select e.evaluable, e.id, ue.completado, e.fechaEntrega from ejercicio as e left join usuejer as ue on e.id=ue.idEj and ue.idUsu=? where visibilidad='yes'";
+                    ps = con.prepareStatement(sqlA);
+                    ps.setInt(1, idUsu);
+                    ResultSet rsA = ps.executeQuery();
+                    while (rsA.next()) {
+                        listaVisible.add(new ejercicio(rsA.getInt("id"), rsA.getBoolean("completado"), rsA.getBoolean("evaluable"), rsA.getDate("fechaEntrega")));
+                    }
+                    request.setAttribute("listaV", listaVisible);
+                }
+                
+                // Ambos usan la misma página pero con distintas listas de atributos
+                request.getRequestDispatcher("tablaEjercicio.jsp").forward(request, response);
+                return;
+            }
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+        }
+    
         }
         
         

@@ -18,6 +18,7 @@ import jakarta.servlet.http.Part;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.sql.Connection;
 import java.sql.Date;
 import java.sql.PreparedStatement;
@@ -67,9 +68,67 @@ private Connection con;
             response.sendRedirect("index.jsp");
             return;
         }
+        // 2. IMPORTAR ALUMNOS (CSV) - NUEVA LÓGICA
+        if ("ALUMNOS LISTOS".equals(request.getParameter("btnSubmit"))) {
+            Part filePart = request.getPart("archivoAlumnos");
+            if (filePart != null) {
+                try (InputStream is = filePart.getInputStream();
+                     BufferedReader br = new BufferedReader(new InputStreamReader(is))) {
+                    
+                    String line;
+                    String sqlInsert = "INSERT INTO usuario (nombre, apellidos, email, password, rol) VALUES (?, ?, ?, ?, 'alumno')";
+                    String sqlGetEjer = "SELECT id FROM ejercicio";
+                    String sqlAsigEjer = "INSERT INTO usuEjer (idUsu, idEj, completado) VALUES (?, ?, 0)";
+
+                    while ((line = br.readLine()) != null) {
+                        String[] datos = line.split(",");
+                        if (datos.length >= 4) {
+                            String nombre = datos[0].trim();
+                            String apellidos = datos[1].trim();
+                            String email = datos[2].trim();
+                            String password = datos[3].trim();
+
+                            // Insertar Alumno
+                            ps = con.prepareStatement(sqlInsert, Statement.RETURN_GENERATED_KEYS);
+                            ps.setString(1, nombre);
+                            ps.setString(2, apellidos);
+                            ps.setString(3, email);
+                            ps.setString(4, password);
+                            ps.executeUpdate();
+
+                            // Obtener ID generado
+                            ResultSet rsKeys = ps.getGeneratedKeys();
+                            if (rsKeys.next()) {
+                                int idNuevoUsu = rsKeys.getInt(1);
+
+                                // Asignar todos los ejercicios existentes a este nuevo alumno
+                                Statement stEjer = con.createStatement();
+                                ResultSet rsEjer = stEjer.executeQuery(sqlGetEjer);
+                                PreparedStatement psAsig = con.prepareStatement(sqlAsigEjer);
+                                while (rsEjer.next()) {
+                                    psAsig.setInt(1, idNuevoUsu);
+                                    psAsig.setInt(2, rsEjer.getInt("id"));
+                                    psAsig.executeUpdate();
+                                }
+                            }
+                        }
+                    }
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
+            }
+            response.sendRedirect("alumnos.jsp");
+            return;
+        }
+        
         if("AÑADIR EJERCICIO".equals(request.getParameter("btnSubmit"))){
             
             response.sendRedirect("añadirEjercicio.jsp");
+            return;
+        }
+        if("AÑADIR ALUMNOS".equals(request.getParameter("btnSubmit"))){
+            
+            response.sendRedirect("añadirAlumnos.jsp");
             return;
         }
         if("TABLA EJERCICIOS".equals(request.getParameter("btnsubmit"))){

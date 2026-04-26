@@ -47,7 +47,7 @@ public class Controlador extends HttpServlet {
         HttpSession session = request.getSession();
         
         try{
-            String uql= "Select * from usuario where email =? and BINARY contrasenia=?";
+            String uql= "Select * from usuario where email =? and BINARY password=?";
             ps= con.prepareStatement(uql);
             ps.setString(1, pEmail);
             ps.setString(2, pContr);

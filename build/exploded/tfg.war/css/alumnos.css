@@ -80,6 +80,23 @@ table.table2 td:hover{
     cursor:pointer;
 }
 
+/* Boton añadir + EVALUABLES */
+.btn-anadir{
+    padding: 12px 25px;
+    margin: 5px;
+    font-size: 1em;
+    background-color: #00008B;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+.btn-anadir:hover {
+    background-color: #45a049;
+}
+
 /* Botón de cerrar sesión */
 input[name="btnSubmit"][value="CERRAR SESION"] {
     position: absolute;

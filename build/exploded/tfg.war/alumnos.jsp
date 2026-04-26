@@ -53,6 +53,9 @@
 
           
         %>
+        
+        
+        
         <h1>Lista de alumnos:</h1>
         <div class="table-container">
         <table border="2" class="table1">
@@ -63,12 +66,12 @@
                 
                     <%
                         try{
-                        String sql = "Select id,nombre, apellido from usuario where rol = 'alumno'";
+                        String sql = "Select id,nombre, apellidos from usuario where rol = 'alumno'";
                         st=conn.createStatement();
                         rs=st.executeQuery(sql);
                         while(rs.next()){
                         String nombre=rs.getString("nombre");
-                        String apellido=rs.getString("apellido");
+                        String apellido=rs.getString("apellidos");
                         int id=rs.getInt("id");
                     %>
                     <tr>
@@ -128,6 +131,9 @@
             
         </table>
         </div>
+        <a href="añadirAlumnos.jsp">
+                <button class="btn-anadir" type="button">+ AÑADIR ALUMNOS</button>
+        </a>
         <input type="submit" name="btnSubmit" value="CERRAR SESION" >
        <input type="submit" name="btnAnterior" value="PAGINA ANTERIOR" >
         </form>

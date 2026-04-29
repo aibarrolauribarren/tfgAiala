@@ -320,5 +320,34 @@ input[name="btnsubmit"][value="TABLA EJERCICIOS"] {
   z-index: 1000;
   border-radius: 10px 10px 10px 10px;
 }
+.profesor-buttons {
+    display: flex;
+    flex-direction: row;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap; /* por si no cabe en pantalla */
+}
 
+.profesor-buttons input,
+.profesor-buttons button {
+    padding: 10px 15px;
+    border-radius: 5px;
+    border: none;
+    background-color: #00008B;
+    color: white;
+    cursor: pointer;
+    font-weight: bold;
+    transition: 0.3s;
+}
+
+.profesor-buttons input:hover,
+.profesor-buttons button:hover {
+    background-color: #45a049;
+}
+
+.fecha-entrega {
+    color: #BAAFAD; /* azul oscuro */
+    margin-top: -10px; /* lo acerca al h1 */
+    font-weight: bold;
+}
 

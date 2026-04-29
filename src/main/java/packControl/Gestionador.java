@@ -25,6 +25,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import utils.BD;
 
@@ -237,6 +238,46 @@ private Connection con;
     
         }
         
+        if("ELIMINAR EJERCICIO".equals(request.getParameter("submit"))){
+            String idEj=request.getParameter("id");
+            int idE= Integer.parseInt(idEj);
+            try{
+                String sql="delete from ejercicio where id=?";
+                ps=con.prepareStatement(sql);
+                ps.setInt(1, idE);
+                ps.executeUpdate();
+                // Al borrar, volvemos a la lista de ejercicios
+                    response.sendRedirect("profesor.jsp?msg=eliminado");
+                return;
+                
+            }catch(SQLException ex){
+                ex.printStackTrace();
+            }
+            
+        }
+         
+        if("confirmarFecha".equals(request.getParameter("accion"))){
+                    String nuevaFecha = request.getParameter("nuevaFecha");
+                    
+                    String idEj=request.getParameter("id");
+                    int idE= Integer.parseInt(idEj);
+
+                    try {
+                        Connection conn = BD.getConexion();
+                        String sql = "UPDATE ejercicio SET fechaEntrega = ? WHERE id = ?";
+                        ps = conn.prepareStatement(sql);
+                        
+                        if (nuevaFecha != null && !nuevaFecha.isEmpty()) {
+                            ps.setDate(1, java.sql.Date.valueOf(nuevaFecha));
+                        } else {
+                            ps.setNull(1, java.sql.Types.DATE);
+                        }
+                        ps.setInt(2, idE);
+                        ps.executeUpdate();
+                    }catch(SQLException ex){
+                        ex.printStackTrace();
+                    }
+        }
         
        if("EVALUABLES".equals(request.getParameter("btnSubmit"))){
             

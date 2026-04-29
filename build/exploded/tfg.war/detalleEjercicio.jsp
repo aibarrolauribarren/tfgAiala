@@ -29,114 +29,87 @@
           private PreparedStatement ps;
           private Statement st;
           private ResultSet rs;
-          public void init(){
+        /*  public void init(){
           conn=BD.getConexion();
-          }
+          }*/
+
           
         %>
         
-    <%--        <%
-                
-                String idEjercicio= request.getParameter("id");
-                int idE=0;
-                
-                if(idEjercicio!=null){
-                idE=Integer.parseInt(idEjercicio);
-
-                
-                try{
-                String uql= "select * from ejercicio where visibilidad= 'no' and id=?";
-                ps=conn.prepareStatement(uql);
-                ps.setInt(1,idE);
-                rs=ps.executeQuery();
-                
-                if(rs.next()){
-                %>
-                <input type="hidden" name="id" value="<%=idE%>"><br><br>
-                <input type="submit" name="submit" value="PUBLICAR EJERCICIO"><br><br>
-                <%
-                    }
-                }catch(SQLException ex){
-                    ex.printStackTrace();      
-                }
-                }
-
-                try{
-                String uql= "select * from ejercicio where visibilidad= 'yes' and id=?";
-                ps=conn.prepareStatement(uql);
-                ps.setInt(1,idE);
-                rs=ps.executeQuery();
-                %>
-                 <h1>  Ejercicio <%=idE %></h1>
-              
-                <%
-                if(rs.next()){
-                    // Leemos el booleano directamente de la columna 'evaluable'
-                    boolean esEvaluable = rs.getBoolean("evaluable"); 
-                %>
-                    <script>
-                        // Forzamos que se guarde como un booleano real en JS
-                        window.esEvaluable = <%= esEvaluable %>;
-                        console.log("Modo examen activo:", window.esEvaluable);
-                    </script>
-
-                    <input type="hidden" name="id" value="<%=idE%>">
-
-                    <%-- El resto de tus botones (Publicar, Ver Solución, etc) 
-
-                <input type="submit" name="submit" value="VER SOLUCION"><br><br>
-                <%
-                    }
-                %>
-                <%
-                    
-                }catch(SQLException ex){
-                    ex.printStackTrace();      
-                
-                }
-            %> --%>
-            <%
+           <%
             String idEjercicio = request.getParameter("id");
             int idE = 0;
             if (idEjercicio != null) {
                 idE = Integer.parseInt(idEjercicio);
                 try {
+                conn=BD.getConexion();
                     // Buscamos el ejercicio sin importar su visibilidad primero
                     String uql = "select * from ejercicio where id=?";
                     ps = conn.prepareStatement(uql);
                     ps.setInt(1, idE);
                     rs = ps.executeQuery();
-
+            %>
+            
+                           
+            <%
                     if (rs.next()) {
-                        // SACAMOS LOS DATOS
                         boolean esEvaluable = rs.getBoolean("evaluable");
                         String visibilidad = rs.getString("visibilidad");
+                        Date fechaActual = rs.getDate("fechaEntrega"); 
             %>
                         <script>
-                            // Esto tiene que cargarse SÍ O SÍ
                             window.esEvaluable = <%= esEvaluable %>;
                             console.log("¿Es examen?:", window.esEvaluable);
                         </script>
 
-                        <h1>Ejercicio <%=idE %></h1>
                         <input type="hidden" name="id" value="<%=idE%>">
+                    
+                    
+                    <%-- INICIO BLOQUE PROFESOR --%>
+                    <% if("profesor".equals(session.getAttribute("aRol"))){ %>
+                    
+                    <h1>Ejercicio <%=idE %></h1>
+                    <% if(esEvaluable){%>
+                        <h4 class="fecha-entrega" >ÚLTIMO DÍA PARA LA ENTREGA ES <%= fechaActual%></h4><br><br>
+                    <%}%>
+        
+                        <div class="profesor-buttons">
+                            <input type="submit" name="submit" value="ELIMINAR EJERCICIO">
+                            
+                            <% if ("no".equals(visibilidad)) { %>
+                                <input type="submit" name="submit" value="PUBLICAR EJERCICIO">
+                            <% } %>
 
-                        <%-- Decidimos qué botón mostrar según la visibilidad --%>
-                        <% if ("no".equals(visibilidad)) { %>
-                            <input type="submit" name="submit" value="PUBLICAR EJERCICIO"><br><br>
-                        <% } else { %>
-                            <input type="submit" name="submit" value="VER SOLUCION"><br><br>
-                        <% } %>
-            <%
-                    }
-                } catch (SQLException ex) {
-                    ex.printStackTrace();
-                }
+                            <% if (esEvaluable) { %>
+                            
+                                <button type="button" onclick="mostrarFecha()">CAMBIAR LA FECHA DE ENTREGA</button>
+                                <div id="fechaContainer" style="display:none">
+                                    <label>Nueva fecha de entrega:</label>
+                                    <input type="date" name="nuevaFecha" value="<%= (fechaActual != null ? fechaActual.toString().substring(0,10) : "") %>">
+                                    <input type="submit" name="accion" value="confirmarFecha" style="background-color: #28a745; color:white;">
+                                </div>
+                            <% } %>
+                        </div> <%-- Cierre de profesor-controls --%>
+                   
+                    <%-- FIN BLOQUE PROFESOR --%>
+
+                    <script>
+                        function mostrarFecha() {
+                            const container = document.getElementById('fechaContainer');
+                            container.style.display = (container.style.display === 'none' || container.style.display === '') ? 'block' : 'none';
+                        }
+                    </script>
+        <%
+                    }//es profesor
+                } // Cierre de if (rs.next())
+            } catch (SQLException ex) {
+                ex.printStackTrace();
             }
-            %>
+        } // Cierre de if (idEjercicio != null)
+        %>
             
             <input type="submit" name="btnsubmit" value="TABLA EJERCICIOS" >
-       
+      
              </form> 
          
         <div id="container">

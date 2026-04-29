@@ -1,4 +1,8 @@
+
+
+
 /* Estilo general del body */
+
 body {
     font-family: Arial, sans-serif;
     background-color: #5F9EA0;  /* fondo suave */
@@ -317,4 +321,4 @@ input[name="btnsubmit"][value="TABLA EJERCICIOS"] {
   border-radius: 10px 10px 10px 10px;
 }
 
- 
+

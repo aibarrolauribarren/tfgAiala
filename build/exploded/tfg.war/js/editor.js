@@ -55,269 +55,248 @@ class Editor {
     }
     return null
   }
- 
-  cleanERDiagram (erdFileContent) {
-    const erd = {entities: [], relationships: [], specializations: [], categories: []}
-    // 2. Procesar Puntos de Conexión (El círculo de la herencia)
-    const connectionPoints = erdFileContent.cells.filter(c => c.type === 'erd.ConnectionPoint');
-    const inheritanceLinks = erdFileContent.cells.filter(c => c.type === 'erd.InheritanceLink');
+ cleanERDiagram(erdFileContent) {
+    const erd = { entities: [], relationships: [], specializations: [], categories: [] };
+    let i = 0;
 
-    connectionPoints.forEach(cp => {
-        if (cp.connectionType === 'specialization') {
-            const spec = {
-                superclassEntityName: "",
-                subclassEntityNames: [],
-                isTotal: cp.isTotal || false,
-                id: cp.id
+    while (erdFileContent.cells.length > 0) {
+        i = i % erdFileContent.cells.length;
+        const el = erdFileContent.cells[i];
+
+        // 1. Limpieza de elementos básicos
+        if (el.type === 'standard.Link' || el.type === 'erd.Attribute' || el.type === 'erd.Relation') {
+            erdFileContent.cells.splice(i, 1);
+        }
+        // 2. Entidades
+        else if (el.type === 'erd.Entity') {
+            let entity = erd.entities.find((e) => e.id === el.id);
+            if (entity == null) {
+                entity = {
+                    name: el.labelText,
+                    isWeak: el.isWeak,
+                    attributes: [],
+                    id: el.id
+                };
+                erd.entities.push(entity);
+            }
+            erdFileContent.cells.splice(i, 1);
+        }
+        // 3. Atributos (Entidad o Relación)
+        else if (el.type === 'erd.AttributeLink') {
+            let targetType = el.target.type;
+            let originType = el.source.type;
+            
+            if ((targetType == 'erd.Entity' && originType == 'erd.Attribute') || (originType == 'erd.Entity' && targetType == 'erd.Attribute')) {
+                const entityEl = targetType == 'erd.Entity' ? el.target : el.source;
+                const attrEl = targetType == 'erd.Attribute' ? el.target : el.source;
+                let entity = erd.entities.find((e) => e.id === entityEl.id);
+                if (entity == null) {
+                    entity = { name: entityEl.labelText, isWeak: entityEl.isWeak, attributes: [], id: entityEl.id };
+                    erd.entities.push(entity);
+                }
+                let attr = entity.attributes.find((a) => a.id == attrEl.id);
+                if (attr == null) {
+                    entity.attributes.push({
+                        name: attrEl.labelText,
+                        isMultivalued: attrEl.isMultivaluated,
+                        isDerivated: attrEl.isDerivated,
+                        isKey: attrEl.isKey,
+                        isPartialKey: attrEl.isPartialKey,
+                        subattributes: [],
+                        id: attrEl.id
+                    });
+                }
+                erdFileContent.cells.splice(i, 1);
+            }
+            else if ((targetType == 'erd.Relation' && originType == 'erd.Attribute') || (originType == 'erd.Relation' && targetType == 'erd.Attribute')) {
+                const relEl = targetType == 'erd.Relation' ? el.target : el.source;
+                const attrEl = targetType == 'erd.Attribute' ? el.target : el.source;
+                let relationship = erd.relationships.find((r) => r.id === relEl.id);
+                if (relationship == null) {
+                    relationship = { id: relEl.id, participants: [], label: relEl.labelText, isIdentifier: relEl.isIdentifier, attributes: [] };
+                    erd.relationships.push(relationship);
+                }
+                if (!relationship.attributes.find((a) => a.id === attrEl.id)) {
+                    relationship.attributes.push({
+                        name: attrEl.labelText,
+                        isMultivalued: attrEl.isMultivaluated,
+                        isDerivated: attrEl.isDerivated,
+                        isKey: attrEl.isKey,
+                        isPartialKey: attrEl.isPartialKey,
+                        subattributes: [],
+                        id: attrEl.id
+                    });
+                }
+                erdFileContent.cells.splice(i, 1);
+            }
+            else if (targetType == 'erd.Attribute' && originType == 'erd.Attribute') {
+                const sourceAttr = Editor.searchAttribute(erd, el.source.id);
+                const targetAttr = Editor.searchAttribute(erd, el.target.id);
+                let parentAttr = sourceAttr || targetAttr;
+                let childAttrEl = sourceAttr ? el.target : el.source;
+
+                if (parentAttr) {
+                    parentAttr.subattributes.push({
+                        name: childAttrEl.labelText,
+                        isMultivalued: childAttrEl.isMultivaluated,
+                        isDerivated: childAttrEl.isDerivated,
+                        isKey: childAttrEl.isKey,
+                        isPartialKey: childAttrEl.isPartialKey,
+                        subattributes: [],
+                        id: childAttrEl.id
+                    });
+                    erdFileContent.cells.splice(i, 1);
+                } else {
+                    i++;
+                }
+            }
+        }
+        // 4. Links de Relación
+        else if (el.type === 'erd.RelationshipLink') {
+            const relEl = el.target.type === 'erd.Relation' ? el.target : el.source;
+            const entityEl = el.target.type === 'erd.Entity' ? el.target : el.source;
+            let relationship = erd.relationships.find((r) => r.id === relEl.id);
+            if (relationship == null) {
+                relationship = { id: relEl.id, participants: [], label: relEl.labelText, isIdentifier: relEl.isIdentifier, attributes: [] };
+                erd.relationships.push(relationship);
+            }
+            if (!relationship.participants.find((p) => p.id === entityEl.id)) {
+                relationship.participants.push({
+                    entityName: entityEl.labelText,
+                    id: entityEl.id,
+                    minCardinality: el.minCard,
+                    maxCardinality: el.maxCard
+                });
+            }
+            erdFileContent.cells.splice(i, 1);
+        }
+        // 5. Especializaciones y Categorías (ConnectionPoint)
+        else if (el.type === 'erd.ConnectionPoint') {
+            if (el.connectionType === 'category') {
+                // CATEGORÍA: Plural 'superclassEntityName' y singular 'categoryEntityName'
+                const cat = { categoryEntityName: "", superclassEntityName: [], isTotal: el.isTotal, type: el.labelText || 'U' };
+                const linkElements = [...(el.superclassConnections || []), ...(el.subclassConnections || [])];
+                linkElements.forEach(scId => {
+                    const scel = erdFileContent.cells.find((c) => c.id == scId);
+                    if (!scel) return;
+                    const entName = (scel.source.id === el.id) ? scel.target.labelText : scel.source.labelText;
+                    
+                    if (scel.linkType === 'connection2superclass') cat.superclassEntityName.push(entName);
+                    else cat.categoryEntityName = entName;
+                    
+                    const posL = erdFileContent.cells.findIndex(c => c.id === scId);
+                    if (posL > -1) erdFileContent.cells.splice(posL, 1);
+                });
+                erd.categories.push(cat);
+            } 
+           else if (el.connectionType === 'specialization') {
+            const sp = { 
+                superclassEntityName: "", 
+                subclassEntityNames: [], 
+                isTotal: el.isTotal, 
+                allowsOverlapping: el.labelText == 'o' 
             };
 
-            // Buscar la superclase conectada a este punto
-           /* const upLink = inheritanceLinks.find(l => l.target.id === cp.id && l.linkType === 'connection2superclass');
-            if (upLink && upLink.subclass) spec.superclassEntityName = upLink.source.labelText;
+            const linkElements = [...(el.superclassConnections || []), ...(el.subclassConnections || [])];
 
-            // Buscar las subclases conectadas
-            const downLinks = inheritanceLinks.filter(l => l.target.id === cp.id && l.linkType === 'connection2subclass');
-            spec.subclassEntityNames = downLinks.map(l => l.source.labelText);*/
-                // Buscar la superclase conectada a este punto
-            const upLink = inheritanceLinks.find(l => l.target.id === cp.id && l.linkType === 'connection2superclass');
-            if (upLink) {
-                // IMPORTANTE: En el JSON de JointJS, el nombre está en 'subclass.labelText' del link
-                // o hay que buscar la entidad por ID. Lo más seguro es esto:
-                const superEnt = erdFileContent.cells.find(c => c.id === upLink.source.id);
-                if (superEnt) spec.superclassEntityName = superEnt.labelText;
+            linkElements.forEach(scId => {
+                const scel = erdFileContent.cells.find((c) => c.id == scId);
+                if (!scel) return;
+
+                const entName = (scel.source.id === el.id) ? scel.target.labelText : scel.source.labelText;
+
+                if (scel.linkType === 'connection2superclass') {
+                    sp.superclassEntityName = entName;
+                } else if (scel.linkType === 'connection2subclass') {
+                    sp.subclassEntityNames.push(entName);
+                }
+
+                // ¡NO HACEMOS SPLICE AQUÍ DENTRO!
+            });
+
+            // Borramos todos los links de una vez fuera del bucle
+            linkElements.forEach(scId => {
+                const posL = erdFileContent.cells.findIndex(c => c.id === scId);
+                if (posL > -1) erdFileContent.cells.splice(posL, 1);
+            });
+
+            erd.specializations.push(sp);
+        }
+            const pos = erdFileContent.cells.findIndex((c) => c.id === el.id);
+            if (pos > -1) erdFileContent.cells.splice(pos, 1);
+        }
+        else if (el.type === 'erd.InheritanceLink') {
+
+            const subclassName = el.subclass.labelText;
+            const superclassName = el.superclass.labelText;
+
+            // Buscar si ya existe una especialización para esta subclase
+            let sp = erd.specializations.find(s =>
+                s.subclassEntityNames.includes(subclassName)
+            );
+
+            // Si no existe, crearla
+            if (!sp) {
+                sp = {
+                    superclassEntityName: [],
+                    subclassEntityNames: [subclassName],
+                    isTotal: false,
+                    allowsOverlapping: false
+                };
+
+                erd.specializations.push(sp);
             }
 
-            // Buscar las subclases conectadas
-            const downLinks = inheritanceLinks.filter(l => l.target.id === cp.id && l.linkType === 'connection2subclass');
-            spec.subclassEntityNames = downLinks.map(l => {
-                const subEnt = erdFileContent.cells.find(c => c.id === l.source.id);
-                return subEnt ? subEnt.labelText : "";
-            }).filter(name => name !== "");
+            // Añadir superclase si no está
+            if (!sp.superclassEntityName.includes(superclassName)) {
+                sp.superclassEntityName.push(superclassName);
+            }
 
-           // erd.specializations.push(spec);
-           if (spec.superclassEntityName) erd.specializations.push(spec);
+            erdFileContent.cells.splice(i, 1);
+        }
+        else {
+            i++; // Para evitar bucles infinitos si hay un tipo no reconocido
+        }
+    }
+    // =========================================================
+    // --- BLOQUE NUEVO: UNIFICACIÓN DE ESPECIALIZACIONES ---
+    // =========================================================
+    const unificadas = [];
+    erd.specializations.forEach(spec => {
+        // Normalizamos la hija (siempre como string)
+        const subName = Array.isArray(spec.subclassEntityNames) ? spec.subclassEntityNames[0] : spec.subclassEntityNames;
+        
+        // Buscamos si ya tenemos una especialización para esta hija
+        let existente = unificadas.find(u => {
+            const uSubName = Array.isArray(u.subclassEntityNames) ? u.subclassEntityNames[0] : u.subclassEntityNames;
+            return uSubName === subName;
+        });
+
+        if (existente) {
+            // Si ya existe, unimos los padres (superclases)
+            let nuevosSupers = Array.isArray(spec.superclassEntityName) ? spec.superclassEntityName : [spec.superclassEntityName];
+            let supersActuales = Array.isArray(existente.superclassEntityName) ? existente.superclassEntityName : [existente.superclassEntityName];
+            
+            // Usamos Set para evitar padres duplicados
+            existente.superclassEntityName = [...new Set([...supersActuales, ...nuevosSupers])];
+        } else {
+            // Si es nueva, la añadimos asegurando que superclass sea un array
+            const copia = {...spec};
+            if (!Array.isArray(copia.superclassEntityName)) {
+                copia.superclassEntityName = [copia.superclassEntityName];
+            }
+            unificadas.push(copia);
         }
     });
-        
-        
-    // --- CRUCIAL: Eliminar los elementos de herencia antes del while para evitar BUCLE INFINITO ---
-    erdFileContent.cells = erdFileContent.cells.filter(c => 
-        c.type !== 'erd.ConnectionPoint' && 
-        c.type !== 'erd.InheritanceLink' &&
-        c.type !== 'erd.Specialization' &&
-        c.type !== 'erd.Category'
-    );
-    
-    let i = 0
-    while (erdFileContent.cells.length > 0){
-      i = i % erdFileContent.cells.length
-      const el = erdFileContent.cells[i]
-      if (el.type === 'standard.Link' || el.type === 'erd.Attribute' || el.type === 'erd.Relation'){
-        erdFileContent.cells.splice(i,1)
-      }
-      else if (el.type === 'erd.Entity'){
-        let entity = erd.entities.find((e) => e.id === el.id)
-        if (entity != null) continue
-        entity = {
-          name: el.labelText,
-          isWeak: el.isWeak,
-          attributes: [],
-          id: el.id
-        }
-        erd.entities.push(entity)
-        erdFileContent.cells.splice(i,1)
-      } 
-      else if (el.type === 'erd.AttributeLink'){
-        // distinguir origen: entidad, relación, atributo
-        let targetType = el.target.type
-        let originType = el.source.type
-        
-        if ((targetType == 'erd.Entity' && originType == 'erd.Attribute') || (originType == 'erd.Entity' && targetType == 'erd.Attribute')) {
-          const entityEl = targetType == 'erd.Entity' ? el.target : el.source
-          const attrEl =  targetType == 'erd.Attribute' ? el.target : el.source
-          let entity = erd.entities.find((e) => e.id === entityEl.id)
-          if (entity == null){
-            entity = {name: entityEl.labelText, isWeak: entityEl.isWeak, attributes: [], id: entityEl.id}
-            erd.entities.push(entity)
-          }
-          let attr = entity.attributes.find((a) => a.id == attrEl.id)
-          if (attr == null){
-              attr = {
-              name: attrEl.labelText,
-              isMultivalued: attrEl.isMultivaluated,
-              isDerivated: attrEl.isDerivated,
-              isKey: attrEl.isKey,
-              isPartialKey: attrEl.isPartialKey,
-              subattributes: [],
-              id: attrEl.id
-            }
-            entity.attributes.push(attr)
-          } 
-          erdFileContent.cells.splice(i,1)
-          
-        }
-        else if ((targetType == 'erd.Relation' && originType == 'erd.Attribute') || (originType == 'erd.Relation' && targetType == 'erd.Attribute')) {         
-          const relEl = targetType == 'erd.Relation' ? el.target : el.source
-          const attrEl =  targetType == 'erd.Attribute' ? el.target : el.source
-          let relationship = erd.relationships.find((r) => r.id === relEl.id)
-          if (relationship == null){
-            relationship = {id: relEl.id, participants: [], label: relEl.labelText, isIdentifier: relEl.isIdentifier, attributes: []}
-            erd.relationships.push(relationship)
-          }
-          let attr = relationship.attributes.find((a) => a.id === attrEl.id)
-          if (attr == null){
-            attr = {
-              name: attrEl.labelText,
-              isMultivalued: attrEl.isMultivaluated,
-              isDerivated: attrEl.isDerivated,
-              isKey: attrEl.isKey,
-              isPartialKey: attrEl.isPartialKey,
-              subattributes: [],
-              id: attrEl.id
-            }
-            relationship.attributes.push(attr)
-          } 
-          erdFileContent.cells.splice(i,1)
-        }
-        else if (targetType == 'erd.Attribute' && originType == 'erd.Attribute'){
-          const sourceAttr = Editor.searchAttribute(erd, el.source.id)
-          const targetAttr = Editor.searchAttribute(erd, el.target.id) 
-          let parentAttrEl, childAttrEl
-          if (sourceAttr != null){
-            parentAttrEl = el.source
-            childAttrEl = el.target
-          } 
-          else if (targetAttr != null){
-            parentAttrEl = el.target
-            childAttrEl = el.source
-          }
-          else {
-            i++
-            continue
-          }
-          let subAttr = {
-            name: childAttrEl.labelText,
-            isMultivalued: childAttrEl.isMultivaluated,
-            isDerivated: childAttrEl.isDerivated,
-            isKey: childAttrEl.isKey,
-            isPartialKey: childAttrEl.isPartialKey,
-            subattributes: [],
-            id: childAttrEl.id
-          }
-          const parentAttr = sourceAttr != null ? sourceAttr : targetAttr
-          parentAttr.subattributes.push(subAttr)
-          erdFileContent.cells.splice(i,1)
-        }
-      } 
-      else if (el.type === 'erd.RelationshipLink'){
-        let targetType = el.target.type
-        let originType = el.source.type
-        const relEl = targetType == 'erd.Relation' ? el.target : el.source
-        const entityEl = targetType == 'erd.Entity' ? el.target : el.source
-        let relationship = erd.relationships.find((r) => r.id === relEl.id)
-        if (relationship == null){
-          relationship = {id: relEl.id, participants: [], label: relEl.labelText, isIdentifier: relEl.isIdentifier, attributes: []}
-          erd.relationships.push(relationship)
-        }
-        let participant = relationship.participants.find((p) => p.id === entityEl.id)
-        if (participant == null){
-          participant = {
-            entityName: entityEl.labelText,
-            id: entityEl.id,
-            minCardinality: el.minCard,
-            maxCardinality: el.maxCard
-          }
-          relationship.participants.push(participant)
-        }
-        erdFileContent.cells.splice(i,1);
-      }
-        else if (el.type === 'erd.Specialization') {
-          const specialization = {
-              superclassEntityName: el.superclass, // Asegúrate que 'superclass' es el atributo del JSON de JointJS
-              subclassEntityNames: el.subclasses || [], 
-              isTotal: el.isTotal || false,
-              allowsOverlapping: el.isOverlapping || false,
-              id: el.id
-          };
-          erd.specializations.push(specialization);
-          erdFileContent.cells.splice(i, 1);
-        }
-        else if (el.type === 'erd.Category') {
-          const category = {
-              categoryEntityName: el.categoryName,
-              superclassEntityNames: el.superclasses || [],
-              isTotal: el.isTotal || false,
-              id: el.id
-          };
-          erd.categories.push(category);
-          erdFileContent.cells.splice(i, 1);
-        }
-    }
-    return erd
-    // target
-    /*
-    {
-      entities: [
-          {
-              name: X,
-              isWeak: false/true,
-              attributes: [
-                  {
-                      name: X,
-                      isKey: true/false,
-                      isMultivalued: true/false,
-                      isDerivate: true/false,
-                      isPartialKey: true/false,
-                      subattributes: [
-                          {
-                              name: ...
-                          }
-                      ]
-                  }, ...
-              ]
-          }
-      ],
-      relationships: [
-          {
-              label: X,
-              participants: [
-                  {   
-                      entityName: X,
-                      minCardinality: 0/1/N,
-                      maxCardinality: 1/N
-                  } ...
-              ],
-              isIdentificator: true/false, // para tipos de entidad débiles
-              attributes: [
-                  {name...}
-              ]
-          }, ...
-      ],
-      specializations: [
-          {
-              superclassEntityName: X,
-              subclassEntityNames: [X, Y, ...],
-              isTotal: true/false,
-              allowsOverlapping: true/false
-          }, ...
-      ],
-      categories: [
-          {
-              categoryEntityName: X,
-              superclassEntityNames: [X, Y, ...],
-              isTotal: true/false
-          }
-      ]
-    }
-    */
 
-    // file
-    /*
+    erd.specializations = unificadas;
+    // =========================================================
 
-    */
-
-  }
+    return erd;
+}
  
+
+
   showMappingResult (result) {
     let elClass, backgroundColor, textColor, imgSrc
     if (result.isCorrect){

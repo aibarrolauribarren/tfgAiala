@@ -12,7 +12,7 @@ class Editor {
     this.#schema = new Schema(this)
     this.init()
   }
-  async loadExerciseData () {
+/* async loadExerciseData () {
    /* //const params = new URLSearchParams(document.location.search)
     this.#gist_id = "1332da685857603b519348f010185df3"
     //this.#exercise_name = params.get('ex_name')
@@ -20,7 +20,7 @@ class Editor {
     const result = await fetch('https://api.github.com/gists/'+this.#gist_id)
     const data = await result.json()
     const exercise_content = data.files[this.#exercise_name].content*/
-    const params = new URLSearchParams(document.location.search)
+ /*   const params = new URLSearchParams(document.location.search)
     const exerciseId = params.get('id')
 
     //const result = await fetch("./uploads/" + exerciseId + ".json")
@@ -34,7 +34,40 @@ class Editor {
     
      
   
-}
+}*/
+    
+   async loadExerciseData () {
+    const params = new URLSearchParams(document.location.search)
+    const exerciseId = params.get('id')
+
+    try {
+        const result = await fetch("jsonServlet?id=" + exerciseId)
+        const data = await result.json()
+
+        // Control de sesión caducada
+        if (data && data.error === "session_expired") {
+            alert("Tu sesión ha expirado. Por favor, vuelve a iniciar sesión.");
+            window.location.href = "index.jsp";
+            return;
+        }
+
+        // 1. PINTAR EL DIAGRAMA DE FONDO (Siempre se ejecuta, garantizado)
+        const exercise_content = JSON.stringify(data)
+        App.showGraph(exercise_content)
+        this.#er_diagram_data = this.cleanERDiagram(JSON.parse(exercise_content))
+        console.log("Diagrama cargado con éxito.");
+
+        // 2. RENDERIZAR LAS TABLAS DEL ALUMNO (Si es que existen en la BD)
+        if (data && data.progresoAlumno) {
+            console.log("Restaurando las tablas del alumno...", data.progresoAlumno);
+            this.#schema.cargarEsquemaGuardado(data.progresoAlumno);
+        }
+
+    } catch (error) {
+        console.error("Error cargando los componentes del ejercicio:", error);
+    }
+  }
+  
   static searchInAttributes (el, id) {
     if (el.id === id) return el
     const list = el.attributes != null ? el.attributes : el.subattributes
@@ -334,7 +367,6 @@ testMapping() {
 
             let finalRes = res;
             
-            // CLAVE 2: Solo forzar el mensaje "MAL" si REALMENTE hay un error
             // Si esCorrecto es true, no debemos entrar aquí
             if (!esCorrecto && window.esEvaluable === true) {
                 finalRes = { isCorrect: false, message: "MAL" };
@@ -355,12 +387,35 @@ testMapping() {
 
                     if (id) {
                         // Notificar al servidor
-                        fetch("Gestionador?accion=completar&id=" + id);
+                      /*  fetch("Gestionador?accion=completar&id=" + id);
 
                         // Programar el salto
                         btnSiguiente.onclick = () => {
                             window.location.href = "Gestionador?accion=siguiente&id=" + id;
+                        };*/
+                        // EL ESQUEMA DEL ALUMNO
+                        const jsonEsquema = this.capturarEsquemaActual();
+
+                        // MANDAMOS EL POST AL SERVLET CON LA ACCIÓN Y EL JSON
+                        fetch("Gestionador", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/x-www-form-urlencoded"
+                            },
+                            body: `submit=GUARDAR_RESPUESTA&id=${id}&jsonGrafico=${encodeURIComponent(jsonEsquema)}`
+                        })
+                        .then(response => {
+                            if (!response.ok) {
+                                console.error("Error al persistir el JSON en la base de datos.");
+                            }
+                        })
+                        .catch(err => console.error("Error de red guardando respuesta:", err));
+
+                        // Programar el salto del botón siguiente
+                        btnSiguiente.onclick = () => {
+                            window.location.href = "Gestionador?accion=siguiente&id=" + id;
                         };
+                    
                     }
                 }
             }
@@ -368,36 +423,7 @@ testMapping() {
     }
 }
   
- /* testMapping (){
-    const mapTestButton = document.querySelector("#mapCheck")
-    if (mapTestButton != null){
-      mapTestButton.addEventListener('click',(e) => {
-        const s = this.minimizeSchema()
-        const res = Mapper.checkSolution(this.#er_diagram_data, s)
-        this.showMappingResult(res)
-        
-        if(res.isCorrect){
-           // alert("Ejercicio correcto")
-            
-            const params = new URLSearchParams(window.location.search)
-            const id = params.get("id")
-            fetch("Gestionador?accion=completar&id=" + id) //avisar al servlet del ejercicio completo
-          
-            //  seguir marcando como completado
-            const btnSiguiente= document.getElementById("btnSiguiente")
-            if(btnSiguiente){
-                btnSiguiente.style.display="block"
-                btnSiguiente.onclick=()=>{
-                    window.location.href="Gestionador?accion=siguiente&id=" + id;
-                }
-            }
-            //fetch("Gestionador?accion=completar&id=" + id)
-
-           // document.getElementById("btnSiguiente").style.display ="block"
-        }
-      })
-    }
-  }*/
+ 
   minimizeSchema() {
     const studentSolution = {
       relations: []
@@ -478,6 +504,20 @@ testMapping() {
     const contPos = relActionContainer.getBoundingClientRect()
     relActionContainer.style.top = `calc(${pos.top}px)`
     relActionContainer.style.left = `calc(${pos.right}px + 1em)`
+  }
+  
+  capturarEsquemaActual() {
+    const backup = {
+      relations: this.#schema.relations.map(r => ({
+        name: r.name,
+        attributes: r.attributes.map(a => ({ name: a.name, isPK: a.isPK })),
+        fks: r.fks.map(fk => ({
+          targetRelation: fk.targetRelation.name,
+          attributes: fk.attributes.map(a => a.name)
+        }))
+      }))
+    };
+    return JSON.stringify(backup);
   }
 }
 

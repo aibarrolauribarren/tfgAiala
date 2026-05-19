@@ -34,17 +34,13 @@ class Mapper {
                 let totalAfter = baseER.entities.length + baseER.relationships.length + baseER.specializations.length + baseER.categories.length;
                 
                 if (totalBefore === totalAfter) {
-                    //return {isCorrect: false, message: "La solución está incompleta o hay elementos mal definidos."}
                     break;
                 }
             }
 
-            
-    
-
-            // Recorremos todas las tablas que el alumno dibujó
+            // Recorremos todas las tablas que el alumno dibujó para mirar si se ha inventado algo
             for (const sTable of studentRelational.relations) {
-                // 1. ¿Esta tabla existe en el modelo aprobado?
+                // 1. Verificar tablas inventadas
                 const isTableValid = runningRelational.relations.some(r => r.name === sTable.name);
                 if (!isTableValid) {
                     return { 
@@ -62,7 +58,7 @@ class Mapper {
                     }
                 }
 
-                // 3. Verificar relaciones/flechas inventadas
+                // 3. Verificar relaciones inventadas
                 if (sTable.fks) {
                     for (const sFK of sTable.fks) {
                         if (!sFK.isValidated) {
@@ -76,24 +72,13 @@ class Mapper {
             }
 
             // FINAL: Si el bucle while terminó por completo (borró todo el ER)
-            // significa que la solución es 100% correcta.
             if (baseER.entities.length === 0 && baseER.relationships.length === 0 && 
                 baseER.specializations.length === 0 && baseER.categories.length === 0) {
                 return {isCorrect: true, message: "¡PERFECTO!!"};
             }
 
-            // Si salimos del bucle pero aún quedan cosas en baseER, es que la solución está incompleta
             return {isCorrect: false, message: "La solución está incompleta. Revisa las entidades o relaciones pendientes."};
-            // Si llega aquí, es que no hay "basura"
-          //  return {isCorrect: true, message: "¡PERFECTO!!"}
-
-            // SI SALE DEL BUCLE PORQUE TODO SE HA BORRADO
-          /*  if (safety < 100) {
-                return {isCorrect: true, message: "¡PERFECTO!!"}
-            } else {
-                return {isCorrect: false, message: "Error: Se ha alcanzado el límite de intentos (Bucle detectado)."}
-            }*/
-
+            
         } catch (error) {
             console.error(error);
             return {isCorrect: false, message: "Error crítico en el Mapper: " + error.message};
@@ -146,32 +131,24 @@ class Mapper {
     }
 
     static mapStrongEntities(baseER, studentRelational, runningRelational) {
-        // Recorremos las entidades de atrás hacia adelante para poder usar splice con seguridad
         for (let i = baseER.entities.length - 1; i >= 0; i--) {
             const entity = baseER.entities[i];
             const esSubclase = baseER.specializations.some(s => s.subclassEntityNames.includes(entity.name));
             if (esSubclase) continue;
             const studentTable = studentRelational.relations.find(r => r.name === entity.name);
-            // Si el alumno aún no ha dibujado la tabla, no podemos validarla todavía
+           
             if (!studentTable) continue; 
-            
-            
-            
-        // --- CAMBIO AQUÍ: Si es débil (isWeak: true), NO la procesamos como fuerte ---
-        if (entity.isWeak) continue; 
-        
-        
-            // Validamos los atributos de la entidad
+
+            if (entity.isWeak) continue; 
+      
             for (const attr of entity.attributes) {
                 
-                // REGLA 1: Ignorar derivados (como A2) y multivaluados (van a otra tabla)
                 if (attr.isDerivated || attr.isMultivalued) {
                     continue; 
                 }
 
-                // REGLA 2: Atributos Compuestos (como B3)
                 if (attr.subattributes && attr.subattributes.length > 0) {
-                    // El "padre" desaparece y buscamos a los "hijos" (B4, B5) directamente en la tabla
+                    
                     for (const sub of attr.subattributes) {
                         
                             const foundSub = studentTable.attributes.find(sa => sa.name === sub.name);
@@ -182,7 +159,7 @@ class Mapper {
                                 };
                             }
                             
-                            foundSub.isValidated = true; // <--- SELLO DE VALIDEZ
+                            foundSub.isValidated = true; 
                             
                             if(attr.isKey && !foundSub.isPK){
                             
@@ -193,9 +170,7 @@ class Mapper {
                             }
                         
                     }
-                } 
-                // REGLA 3: Atributos Simples
-                else {
+                }else {
                     const foundAttr = studentTable.attributes.find(sa => sa.name === attr.name);
                     if (!foundAttr) {
                         
@@ -205,9 +180,6 @@ class Mapper {
                         };
                     }else{
                         
-                        
-                        
-                    // 1. Si es PK en el dibujo pero NO debería serlo según el ER
                         if (foundAttr.isPK && !attr.isKey) {
                             return { 
                                 isCorrect: false, 
@@ -238,7 +210,6 @@ class Mapper {
     for (let i = baseER.entities.length - 1; i >= 0; i--) {
         const entity = baseER.entities[i];
         
-        // 1. Filtro: Solo si es débil en el JSON
         if (entity.isWeak !== true) continue;
      
         const studentTable = studentRelational.relations.find(r => r.name === entity.name);
@@ -250,11 +221,10 @@ class Mapper {
 
         if (relacionesIdentificadoras.length === 0) continue;
 
-        // 3. Validamos cada relación identificadora (Herencia de PK y existencia de FK)
         let listasParaBorrar = [];
         let faltanFuertes = false;
         
-        // 2. Para cada relación, obligamos a que su FK esté en la PK de la débil
+        // Para cada relación, obligamos a que su FK esté en la PK de la débil
         for (const rel of relacionesIdentificadoras) {
             const pFuerte = rel.participants.find(p => p.entityName !== entity.name);
             const runningFuerte = runningRelational.relations.find(r => r.name === pFuerte.entityName);
@@ -277,55 +247,43 @@ class Mapper {
                 found.isValidated = true;
             }
 
-            // VALIDAR FK (Lo que pedías)
-          /*  const tieneFK = studentTable.fks.find(f => f.targetRelation === pFuerte.entityName);
+            // VALIDAR FK 
+            const tieneFK = studentTable.fks.find(f => f.targetRelation === pFuerte.entityName);
+
             if (!tieneFK) {
                 return { 
                     isCorrect: false, 
                     message: `ERROR: Falta la relación (FK) de '${entity.name}' apuntando a '${pFuerte.entityName}'.` 
                 };
             }
-            tieneFK.isValidated = true;*/
-                // ====================================================================
-// VALIDAR FK (Adaptado al JSON real del editor: revisa el array .attributes)
-// ====================================================================
-const tieneFK = studentTable.fks.find(f => f.targetRelation === pFuerte.entityName);
 
-if (!tieneFK) {
-    return { 
-        isCorrect: false, 
-        message: `ERROR: Falta la relación (FK) de '${entity.name}' apuntando a '${pFuerte.entityName}'.` 
-    };
-}
+            // Sacamos el atributo real donde el alumno ha pulsado el botón verde de FK
+            const nombreOrigenFK = tieneFK.attributes && tieneFK.attributes[0];
 
-// Sacamos el atributo real donde el alumno ha pulsado el botón verde de FK
-const nombreOrigenFK = tieneFK.attributes && tieneFK.attributes[0];
+            // En una entidad débil, las FKs heredadas de la fuerte DEBEN nacer de esos mismos atributos heredados.
+            // Validamos que el origen de la FK coincida con alguna de las PKs de la entidad fuerte.
+            const esAtributoValido = pksFuerte.some(pk => pk.name.toLowerCase().trim() === nombreOrigenFK?.toLowerCase().trim());
 
-// En una entidad débil, las FKs heredadas de la fuerte DEBEN nacer de esos mismos atributos heredados.
-// Validamos que el origen de la FK coincida con alguna de las PKs de la entidad fuerte.
-const esAtributoValido = pksFuerte.some(pk => pk.name.toLowerCase().trim() === nombreOrigenFK?.toLowerCase().trim());
+            if (!nombreOrigenFK) {
+                return {
+                    isCorrect: false,
+                    message: `ERROR: La FK de '${entity.name}' hacia '${pFuerte.entityName}' debe estar vinculada a los atributos heredados.`
+                };
+            }
 
-if (!nombreOrigenFK) {
-    return {
-        isCorrect: false,
-        message: `ERROR: La FK de '${entity.name}' hacia '${pFuerte.entityName}' debe estar vinculada a los atributos heredados.`
-    };
-}
+            if (!esAtributoValido) {
+                return {
+                    isCorrect: false,
+                    message: `Error de diseño en '${entity.name}': La FK hacia '${pFuerte.entityName}' está mal colocada. Debe nacer de un atributo heredado de la fuerte, no de '${nombreOrigenFK}'.`
+                };
+            }
 
-if (!esAtributoValido) {
-    return {
-        isCorrect: false,
-        message: `Error de diseño en '${entity.name}': La FK hacia '${pFuerte.entityName}' está mal colocada. Debe nacer de un atributo heredado de la fuerte, no de '${nombreOrigenFK}'.`
-    };
-}
-
-tieneFK.isValidated = true;
+            tieneFK.isValidated = true;
             
             listasParaBorrar.push(rel);
         }
         
                 
-        // B. Validar los atributos propios (A1 y A2)
         for (const attr of entity.attributes) {
             if (attr.isDerivated || attr.isMultivalued) continue;
 
@@ -335,7 +293,7 @@ tieneFK.isValidated = true;
             }
             foundAttr.isValidated = true;
 
-            // Si es el discriminador (A1), ¡OBLIGATORIO ser PK!
+
             if (attr.isPartialKey === true && !foundAttr.isPK) {
                 return { 
                     isCorrect: false, 
@@ -347,7 +305,7 @@ tieneFK.isValidated = true;
         
         runningRelational.relations.push(studentTable);
         baseER.entities.splice(i, 1);
-        // Borramos todos los rombos identificadores procesados
+        
         for (const rel of listasParaBorrar) {
             const idx = baseER.relationships.indexOf(rel);
             if (idx !== -1) baseER.relationships.splice(idx, 1);
@@ -359,12 +317,12 @@ tieneFK.isValidated = true;
 }
 
    static mapMultivaluedAttributes(baseER, studentRelational, runningRelational) {
-    for (const entity of baseER.entities) { // Miramos en las entidades que aún no se han borrado
+    for (const entity of baseER.entities) { 
         for (let i = entity.attributes.length - 1; i >= 0; i--) {
             const attr = entity.attributes[i];
 
             if (attr.isMultivalued) {
-                // Buscamos la tabla que el alumno debe haber creado (B3)
+                
                 const studentTable = studentRelational.relations.find(r => r.name === attr.name);
 
                 if (!studentTable) {
@@ -374,10 +332,9 @@ tieneFK.isValidated = true;
                     };
                 }
 
-                // VALIDACIÓN DE CLAVE COMPUESTA (B1 + B4 + B5)
-                const entityPKName = entity.attributes.find(a => a.isKey).name; // B1
+                const entityPKName = entity.attributes.find(a => a.isKey).name; 
                 
-                // ¿Está la PK de la entidad (B1) en la tabla B3 y es PK?
+                
                 const hasEntityPK = studentTable.attributes.find(a => a.name === entityPKName && a.isPK);
                 if (!hasEntityPK) {
                     return { isCorrect: false, message: `ERROR: La tabla '${attr.name}' debe incluir '${entityPKName}' como parte de su Clave Primaria.` };
@@ -394,7 +351,7 @@ tieneFK.isValidated = true;
                                 message: `ERROR: Falta el atributo '${sub.name}' en la tabla '${attr.name}'.` 
                             };
                         }
-                        // SI EL ALUMNO NO LO PUSO PK, LE AVISAMOS
+                        
                         if (!foundSub.isPK) {
                             return {
                                 isCorrect: false,
@@ -422,18 +379,7 @@ tieneFK.isValidated = true;
                     foundAttr.isValidated=true;
                 }
                 const pkReal = entity.attributes.find(a => a.isKey).name;
-                // --- VALIDACIÓN DE LA FK (FLECHA) ---
-              /*  const tieneFK = studentTable.fks.find(f => f.targetRelation === entity.name);
-
-                if (!tieneFK) {
-                    return { 
-                        isCorrect: false, 
-                        message: `ERROR: La tabla del atributo multivaluado '${studentTable.name}' debe tener una FK hacia '${entity.name}'.` 
-                    };
-                }*/
-                    // ====================================================================
-                // --- VALIDACIÓN DE LA FK REESCRITA CON EL ARRAY REAL ENCONTRADO ---
-                // ====================================================================
+                
                 const tieneFK = studentTable.fks.find(f => f.targetRelation === entity.name);
 
                 if (!tieneFK) {
@@ -443,10 +389,8 @@ tieneFK.isValidated = true;
                     };
                 }
 
-                // Extraemos de forma segura el atributo origen usando la propiedad real de tu JSON
                 const origenDetectado = tieneFK.attributes && tieneFK.attributes[0];
 
-                // Si no hay nada seleccionado o si seleccionó el atributo erróneo (no es la PK de la entidad)
                 if (!origenDetectado) {
                     return {
                         isCorrect: false,
@@ -462,24 +406,8 @@ tieneFK.isValidated = true;
                 }
 
                 tieneFK.isValidated = true;
-                // ====================================================================
-                
-                // 1. Detectamos el origen de la flecha por cualquier medio posible
-                
-               /* let origenDetectado = tieneFK.originAttribute || tieneFK.fromAttribute || tieneFK.from || tieneFK.source;
+               
 
-                // 2. Si el origen es 'undefined' (porque la flecha sale del borde),
-                // pero vemos que el alumno ha escrito "FK:A" en A1 (lo cual significa que A1 es el campo),
-                // vamos a ser inteligentes y buscar si el campo A1 existe.
-                if (!origenDetectado) {
-                    const campoPK = studentTable.attributes.find(a => a.name === entityPKName);
-                    // Si el campo A1 existe en la tabla A2, damos por hecho que la FK sale de ahí
-                    if (campoPK) {
-                        origenDetectado = entityPKName;
-                    }
-                }*/
-
-                // 3. VALIDACIÓN FINAL (Muy sencilla)
                 if (origenDetectado !== entityPKName) {
                     return {
                         isCorrect: false,
@@ -488,7 +416,7 @@ tieneFK.isValidated = true;
                 }
                 tieneFK.isValidated=true;
                 runningRelational.relations.push(studentTable);
-                // Si todo está bien, borramos el atributo para que no lo pida en la tabla normal
+                
                 entity.attributes.splice(i, 1);
             }
         }
@@ -501,7 +429,7 @@ tieneFK.isValidated = true;
             const rel = baseER.relationships[i];
             
             const roles = rel.participants;
-            // Seguridad por si la relación no tiene participantes
+            
             if (!roles || roles.length < 2) continue;
             const card1 = roles[0].maxCardinality;
             const card2 = roles[1].maxCardinality;
@@ -518,7 +446,6 @@ tieneFK.isValidated = true;
             }
             if (result != null) return result;
 
-            // ¡ESTO ES LO QUE TE FALTA! Si no hay error, borramos el rombo del diagrama ER
             const index = baseER.relationships.indexOf(rel);
             baseER.relationships.splice(index, 1);
         }
@@ -539,7 +466,7 @@ tieneFK.isValidated = true;
                 };
             }
             studentAttr.isValidated=true;
-            // Si está, lo quitamos de la lista de pendientes
+            
             relationship.attributes.splice(i, 1);
         }
         return null;
@@ -547,19 +474,18 @@ tieneFK.isValidated = true;
 
 
     static mapNAryRelationships (baseER, studentRelational, runningRelational, relationship){
-        //const pos = baseER.relationships.find((r) => r == relationship)
         const pos = baseER.relationships.indexOf(relationship);
         const relations = []
         for (const p of relationship.participants){
             const r = runningRelational.relations.find((r) => r.name == p.entityName)
-            if (r == null) return null // todavía no se ha transformado
+            if (r == null) return null 
             relations.push(r)
         }
 
         const pkRelations = []
         for(const r of relations){
             const pkR = r.attributes.filter((a) => a.isPK)
-            if (pkR == null || pkR.length == 0) return null // todavía no se ha definido la PK
+            if (pkR == null || pkR.length == 0) return null 
             pkRelations.push(pkR)
         }
 
@@ -607,9 +533,6 @@ tieneFK.isValidated = true;
         }
 
      
-        // ====================================================================
-        // --- VALIDACIÓN DE FKs EN RELACIONES N-ARIAS (Mapeo estricto de attributes) ---
-        // ====================================================================
         for(let i=0;i<pkRelations.length;i++){
             const r = relations[i]
             const pkAttrs = pkRelations[i]
@@ -650,10 +573,8 @@ tieneFK.isValidated = true;
                 attributes: pkAttrs.map((a) => a.name)
             })
         }
-        // ====================================================================
-
-        // todo -> gestionar claves candidatas
-        // --- TODO: GESTIONAR CLAVES CANDIDATAS (Validación de PK) ---
+        
+        //  Validación de PK 
         const studentPKAttrs = studentNaryRelation.attributes.filter(a => a.isPK).map(a => a.name.toLowerCase());
 
         if (studentPKAttrs.length === 0) {
@@ -695,7 +616,7 @@ tieneFK.isValidated = true;
     const studentTable1 = studentRelational.relations.find(r => r.name === ent1Name);
     const studentTable2 = studentRelational.relations.find(r => r.name === ent2Name);
 
-    // --- CASO PROPAGACIÓN (Págs 6 y 7) ---
+    // CASO PROPAGACIÓN (Págs 6 y 7) 
     if (isOptional) {
         // Si faltan las tablas físicas en el dibujo, esperamos en silencio
         if (!studentTable1 || !studentTable2) return null;
@@ -751,7 +672,6 @@ tieneFK.isValidated = true;
             };
         }
         
-        // ⭐ ¡¡AQUÍ ESTÁ EL CAMBIO CLAVE!! ⭐
         // Marcamos el atributo como validado para que el bucle general de la app no diga que "no pertenece al modelo"
         fkEncontrada.isValidated = true; 
             
@@ -818,7 +738,7 @@ tieneFK.isValidated = true;
         return null;
     }
 
-    // --- ESCENARIO B: FUSIÓN (Página 8 - Ambos 1,1) ---
+    // --- ESCENARIO B: FUSIÓN (Página 8 - Ambos 1,1) 
     if (isBothMandatory) {
         // 1. Buscamos la tabla que debería contener todo
         const fusionTable = studentRelational.relations.find(r => 
@@ -875,7 +795,7 @@ tieneFK.isValidated = true;
         }
 
         runningRelational.relations.push(fusionTable);
-        // ÉXITO: Limpiamos todo
+        
         baseER.entities = baseER.entities.filter(e => e.name !== ent1Name && e.name !== ent2Name);
         const relIdx = baseER.relationships.indexOf(rel);
         baseER.relationships.splice(relIdx, 1);
@@ -892,10 +812,7 @@ tieneFK.isValidated = true;
 
     if (!roleN || !role1) return null;
 
-    // ====================================================================
-    // 🛠️ ADAPTADO A TU SISTEMA: El lado 1 recibe la clave del lado N
-    // ====================================================================
-    // TABLA DESTINO (La que recibe la FK según tu plataforma): Lado 1
+    // TABLA DESTINO (La que recibe la FK): Lado 1
     const studentTableDestino = studentRelational.relations.find(r => r.name === role1.entityName);
     
     // TABLA ORIGEN (De donde viene la PK): Lado N
@@ -917,7 +834,7 @@ tieneFK.isValidated = true;
             };
         }
 
-        foundInDestino.isValidated = true; // Sello mágico de aprobación para el validador general
+        foundInDestino.isValidated = true; 
         
         if (foundInDestino.isPK) {
             return { 
@@ -927,7 +844,7 @@ tieneFK.isValidated = true;
         }
     }
 
-    // 2. VALIDAR LA FLECHA DE LA CLAVE AJENA (FK)
+    // 2. VALIDAR LA FK
     const tieneFK = studentTableDestino.fks.find(f => f.targetRelation.toLowerCase().trim() === roleN.entityName.toLowerCase().trim());
     if (!tieneFK) {
         return { 
@@ -936,7 +853,7 @@ tieneFK.isValidated = true;
         };
     }
 
-    // --- BLINDAJE CON EL ARRAY ATTRIBUTES[0] ---
+    
     const origenDetectadoFK = tieneFK.attributes && tieneFK.attributes[0];
     if (!origenDetectadoFK) {
         return {
@@ -956,13 +873,10 @@ tieneFK.isValidated = true;
 
     tieneFK.isValidated = true;
 
-    // 3. VALIDAR ATRIBUTOS DEL ROMBO (R1) - Viajan también a la tabla destino (Lado 1)
+    // 3. VALIDAR ATRIBUTOS DEL ROMBO (R1) 
     const resAttributes = Mapper.mapRelationshipAttributes(baseER, studentRelational, runningRelational, rel, studentTableDestino);
     if (resAttributes && !resAttributes.isCorrect) return resAttributes;
 
-    // ====================================================================
-    // ✨ REGISTRO EN EL RUNNING (Para que el validador general acepte los cambios)
-    // ====================================================================
     const idxRunning = runningRelational.relations.findIndex(r => r.name === studentTableDestino.name);
     if (idxRunning !== -1) {
         runningRelational.relations[idxRunning] = studentTableDestino;
@@ -975,7 +889,6 @@ tieneFK.isValidated = true;
     if (studentTableOrigen && !runningRelational.relations.some(r => r.name === studentTableOrigen.name)) {
         runningRelational.relations.push(studentTableOrigen);
     }
-    // ====================================================================
 
     // FINAL: Si todo está bien, borramos la relación para limpiar el mapa
     const relIdx = baseER.relationships.indexOf(rel);
@@ -985,7 +898,7 @@ tieneFK.isValidated = true;
 }
  
     
-    // --- PASO 5: RELACIONES M:N (como tu R3) ---
+    // --- PASO 5: RELACIONES M:N  ---
     
     static mapMNRelationship(baseER, studentRelational, runningRelational, rel) {
         const studentTable = studentRelational.relations.find(r => r.name === rel.label);
@@ -1016,7 +929,7 @@ tieneFK.isValidated = true;
             foundInTable.isValidated=true;
         
             };
-            // 2. VALIDAR FK (La flechita hacia cada participante)
+            // 2. VALIDAR FK 
            const tieneFK = studentTable.fks.find(f => f.targetRelation === participant.entityName);
             if (!tieneFK) {
                 return { 
@@ -1025,26 +938,26 @@ tieneFK.isValidated = true;
                 };
             }
             tieneFK.isValidated=true;
-            // --- 🛡️ BLINDAJE DE LA FK REESCRITO (Usa el array real attributes[0]) ---
-        const origenDetectadoFK = tieneFK.attributes && tieneFK.attributes[0];
-        const pkEsperadaNombre = pksDelER[0] ? pksDelER[0].name : "";
+            
+            const origenDetectadoFK = tieneFK.attributes && tieneFK.attributes[0];
+            const pkEsperadaNombre = pksDelER[0] ? pksDelER[0].name : "";
 
-        if (!origenDetectadoFK) {
-            return {
-                isCorrect: false,
-                message: `ERROR: La FK hacia '${participant.entityName}' en la tabla '${rel.label}' debe estar vinculada al atributo '${pkEsperadaNombre}'.`
-            };
-        }
+            if (!origenDetectadoFK) {
+                return {
+                    isCorrect: false,
+                    message: `ERROR: La FK hacia '${participant.entityName}' en la tabla '${rel.label}' debe estar vinculada al atributo '${pkEsperadaNombre}'.`
+                };
+            }
 
-        // Validamos si el alumno vinculó la FK en el atributo correcto de la tabla intermedia
-        if (origenDetectadoFK.toString().toLowerCase().trim() !== pkEsperadaNombre.toLowerCase().trim()) {
-            return {
-                isCorrect: false,
-                message: `Error de diseño en '${rel.label}': La FK hacia '${participant.entityName}' debe nacer del atributo '${pkEsperadaNombre}', no de '${origenDetectadoFK}'.`
-            };
-        }
+            // Validamos si el alumno vinculó la FK en el atributo correcto de la tabla intermedia
+            if (origenDetectadoFK.toString().toLowerCase().trim() !== pkEsperadaNombre.toLowerCase().trim()) {
+                return {
+                    isCorrect: false,
+                    message: `Error de diseño en '${rel.label}': La FK hacia '${participant.entityName}' debe nacer del atributo '${pkEsperadaNombre}', no de '${origenDetectadoFK}'.`
+                };
+            }
 
-        tieneFK.isValidated = true;
+            tieneFK.isValidated = true;
         }
         
         
@@ -1055,7 +968,6 @@ tieneFK.isValidated = true;
     }
     
     static mapSpecializations(baseER, studentRelational, runningRelational) {
-    // --- 1. FUSIÓN INTELIGENTE (Detecta Unión aunque el JSON venga al revés) ---
     const mergedSpecs = [];
     let specsCopy = [...baseER.specializations];
 
@@ -1095,9 +1007,8 @@ tieneFK.isValidated = true;
         mergedSpecs.push(current);
     }
     baseER.specializations = mergedSpecs;
-    console.log("ESPECIALIZACIONES TRAS FUSIÓN:", JSON.stringify(baseER.specializations));
 
-    // --- 2. PROCESAMIENTO PRINCIPAL ---
+
     for (let i = 0; i < baseER.specializations.length; i++) {
         const spec = baseER.specializations[i];
         const superNamesSpecs = Array.isArray(spec.superclassEntityName) 
@@ -1112,7 +1023,6 @@ tieneFK.isValidated = true;
 
             let subName, finalSuperNames;
 
-            // --- EL TRUCO PARA DESEMPATAR ---
             if (supersRaw.length === 1 && subsRaw.length > 1) {
                 subName = supersRaw[0];    
                 finalSuperNames = subsRaw;      
@@ -1121,7 +1031,6 @@ tieneFK.isValidated = true;
                 finalSuperNames = supersRaw;
             }
 
-            // --- RE-VALIDACIÓN MANUAL ---
             const esPadreReal = baseER.entities.find(e => e.name === subName && e.attributes.some(a => a.isKey));
             if (esPadreReal && finalSuperNames.length > 0) {
                 const temp = subName;
@@ -1441,26 +1350,8 @@ tieneFK.isValidated = true;
             // Validar participación total (FK de padres a hija)
             if (cat.isTotal) {
                 for (const pName of superNames) {
-                   /* const tablaPadre = studentRelational.relations.find(r => r.name.toUpperCase().trim() === pName.toUpperCase().trim());
-                    if (!tablaPadre) continue;
-
-                    const tieneFK = tablaPadre.fks?.find(f => f.targetRelation.toUpperCase() === subName.toUpperCase());
-                    if (!tieneFK) {
-                        return { isCorrect: false, message: `La tabla padre '${pName}' debe tener una FK que apunte a la categoría '${subName}' (Participación Total).` };
-                    }
-                    tieneFK.isValidated = true;
-
-                    // Si hay PK propia en la hija, validamos el atributo FK en el padre
-                  /*  if (pkPropiaER) {
-                        const attrFK = tablaPadre.attributes.find(a => a.name.toLowerCase() === pkPropiaER.name.toLowerCase());
-                        if (attrFK) attrFK.isValidated = true;
-                    }
-                        // Buscamos el atributo físico que hace de puente en la tabla padre para validarlo
-                    // Si la categoría tiene PK propia, el padre usa ese nombre. Si no, usa la PK común (primerasPks[0])
-                    const nombreAtributoFK = pkPropiaER ? pkPropiaER.name.toLowerCase() : primerasPks[0];
-                    const attrFK = tablaPadre.attributes.find(a => a.name.toLowerCase() === nombreAtributoFK);
-                    if (attrFK) attrFK.isValidated = true;*/
-                        const tablaPadre = studentRelational.relations.find(r => r.name.toUpperCase().trim() === pName.toUpperCase().trim());
+                  
+                    const tablaPadre = studentRelational.relations.find(r => r.name.toUpperCase().trim() === pName.toUpperCase().trim());
                     if (!tablaPadre) continue;
 
                     // Averiguamos qué nombre de columna DEBERÍA tener la FK en el padre
@@ -1515,22 +1406,7 @@ tieneFK.isValidated = true;
 
             // Validar que los padres tengan la FK hacia P
             for (const pName of superNames) {
-             /*   const tablaPadre = studentRelational.relations.find(r => r.name.toUpperCase().trim() === pName.toUpperCase().trim());
-                if (!tablaPadre) continue;
-                
-                // --- NUEVO: EXIGIR PK EN EL PADRE ---
-                const pkPadre = tablaPadre.attributes.find(a => a.isPK);
-                if (!pkPadre) {
-                    return { isCorrect: false, message: `La tabla padre '${pName}' debe tener su propia clave primaria (PK) subrayada.` };
-                }
-
-               const tieneFK = tablaPadre.fks?.find(f => f.targetRelation.toUpperCase() === subName.toUpperCase());
-                if (!tieneFK) return { isCorrect: false, message: `El padre '${pName}' debe tener una FK hacia '${subName}'.` };
-                
-                tieneFK.isValidated = true;
-                // Marcamos como validado el atributo que hace de FK en el padre
-                const attrFK = tablaPadre.attributes.find(a => a.name.toLowerCase().trim() === pkPropiaTable.name.toLowerCase().trim());
-                if (attrFK) attrFK.isValidated = true;*/
+             
                 const tablaPadre = studentRelational.relations.find(r => r.name.toUpperCase().trim() === pName.toUpperCase().trim());
                 if (!tablaPadre) continue;
                 
@@ -1600,86 +1476,3 @@ tieneFK.isValidated = true;
 
 export {Mapper}
 
-
-/*
-{
-entities: [
-    {
-        name: X,
-        isWeak: false/true,
-        attributes: [
-            {
-                name: X,
-                isKey: true/false,
-                isMultivalued: true/false,
-                isDerivated: true/false,
-                isPartialKey: true/false,
-                subattributes: [
-                    {
-                        name: ...
-                    }
-                ]
-            }, ...
-        ]
-    }
-],
-relationships: [
-    {
-        label: X,
-        participants: [
-            {   
-                entityName: X,
-                minCardinality: 0/1/N,
-                maxCardinality: 1/N
-            } ...
-        ],
-        isIdentificator: true/false, // para tipos de entidad débiles
-        attributes: [
-            name...
-        ]
-    }, ...
-],
-specializations: [
-    {
-        superclassEntityName: X,
-        subclassEntityNames: [X, Y, ...],
-        isTotal: true/false,
-        allowsOverlapping: true/false
-    }, ...
-],
-categories: [
-    {
-        categoryEntityName: X,
-        superclassEntityNames: [X, Y, ...],
-        isTotal: true/false
-        type: 'C' | 'D' |'U'
-    }
-
-]
-}
-
-*/
-
-/*
-
-{
-    relations: [
-        {
-            name: X,
-            attributes: [
-                {
-                    name: X,
-                    isPK: true/false
-                }, ...
-            ]
-            fks: [
-                {
-                    targetRelation: X,
-                    attributes: [X, Y, ...]
-                }
-            ]
-        }, ...
-    ]
-}
-
-*/

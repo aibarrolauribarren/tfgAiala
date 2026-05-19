@@ -193,7 +193,13 @@ private Connection con;
             
             request.getRequestDispatcher("tablaEjercicio.jsp").forward(request,response);
             return;*/
-           int idUsu = (Integer) session.getAttribute("aId");
+          // int idUsu = (Integer) session.getAttribute("aId");
+          Integer idUsuObj = (Integer) session.getAttribute("aId");
+            if (idUsuObj == null) {
+                response.sendRedirect("index.jsp");
+                return;
+            }
+            int idUsu = idUsuObj;
         
         try {
             // Primero consultamos el rol para saber qué tabla mostrar
@@ -281,7 +287,13 @@ private Connection con;
         
        if("EVALUABLES".equals(request.getParameter("btnSubmit"))){
             
-            int usuId= (Integer) session.getAttribute("aId");
+            //int usuId= (Integer) session.getAttribute("aId");
+            Integer usuIdObj = (Integer) session.getAttribute("aId");
+            if (usuIdObj == null) {
+                response.sendRedirect("index.jsp");
+                return;
+            }
+            int usuId = usuIdObj;
             ArrayList<ejercicioEvalAlum> ejerciciosEA = new ArrayList<>();
             try{
                 String sql="Select e.id, e.fechaEntrega, ue.completado from ejercicio as e inner join usuejer as ue on e.id=ue.idEj where evaluable= true and idUsu =?  and visibilidad='yes'";
@@ -491,41 +503,48 @@ private Connection con;
 
             return;
         }
-        /*
-        if ("guardarSolucion".equals(request.getParameter("accion"))) {
-
-            int idEj = Integer.parseInt(request.getParameter("id"));
-            int idUsu = (Integer) session.getAttribute("aId");
-
-            try {
-                // leer el JSON que viene en el body
-                StringBuilder sb = new StringBuilder();
-                String line;
-                BufferedReader reader = request.getReader();
-                while ((line = reader.readLine()) != null) {
-                    sb.append(line);
-                }
-
-                String json = sb.toString();
-
-                // ⚠️ IMPORTANTE: guardar solo la parte "solucion"
-                // (si quieres puedes guardar todo el JSON también)
-
-                String sql = "UPDATE usuEjer SET solucion=? WHERE idUsu=? AND idEj=?";
-                ps = con.prepareStatement(sql);
-                ps.setString(1, json);
-                ps.setInt(2, idUsu);
-                ps.setInt(3, idEj);
-                ps.executeUpdate();
-
-                System.out.println("Solución guardada correctamente");
-
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-
+        
+        // === NUEVO BLOQUE: GUARDAR RESPUESTA JSON DE ALUMNOS ===
+        if ("GUARDAR_RESPUESTA".equals(request.getParameter("submit"))) {
+          //  Integer idUsuario = (Integer) session.getAttribute("aId");
+        Integer idUsuObj = (Integer) session.getAttribute("aId");
+        if (idUsuObj == null) {
+            response.sendRedirect("index.jsp");
             return;
-        }*/
+        }
+        int idUsuario = idUsuObj;
+            String idEjercicioStr = request.getParameter("id");
+            String jsonGrafico = request.getParameter("jsonGrafico");
+
+            if (/*idUsuario != null &&*/ idEjercicioStr != null && jsonGrafico != null) {
+                int idEjercicio = Integer.parseInt(idEjercicioStr);
+                PreparedStatement psGuardar = null;
+                
+                try {
+                    // Actualizamos la respuesta JSON y marcamos como completado (completado = 1)
+                    String sqlGuardar = "UPDATE usuejer SET completado = 1, respuesta = ? WHERE idUsu = ? AND idEj = ?";
+                    psGuardar = con.prepareStatement(sqlGuardar);
+                    psGuardar.setString(1, jsonGrafico);
+                    psGuardar.setInt(2, idUsuario);
+                    psGuardar.setInt(3, idEjercicio);
+                    
+                    psGuardar.executeUpdate();
+                    
+                    // Respondemos con éxito HTTP 200 al fetch de JavaScript
+                    response.setStatus(HttpServletResponse.SC_OK);
+                } catch (SQLException ex) {
+                    ex.printStackTrace();
+                    response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+                } finally {
+                    try { if (psGuardar != null) psGuardar.close(); } catch (SQLException e) {}
+                }
+            } else {
+                response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+            }
+            return; // Muy importante para cortar la ejecución aquí y que no intente redirigir
+        }
+        // =======================================================
+        
 
         
         int idUsu= (Integer) session.getAttribute("aId");

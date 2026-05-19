@@ -64,7 +64,7 @@ public class jsonServlet extends HttpServlet {
      * @throws IOException if an I/O error occurs
      */
     @Override
-    protected void doGet(HttpServletRequest request, HttpServletResponse response)
+    /*protected void doGet(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
         String id = request.getParameter("id");
 
@@ -106,8 +106,103 @@ public class jsonServlet extends HttpServlet {
         
         
        
+    }*/
+    
+    protected void doGet(HttpServletRequest request, HttpServletResponse response)
+        throws ServletException, IOException {
+    
+    String id = request.getParameter("id");
+    if (id == null || id.trim().isEmpty()) {
+        response.sendError(HttpServletResponse.SC_BAD_REQUEST, "Falta el ID del ejercicio");
+        return;
     }
 
+    int idEjercicio = Integer.parseInt(id);
+    HttpSession session = request.getSession(false);
+    Integer idUsuario = (session != null) ? (Integer) session.getAttribute("aId") : null;
+
+    if (idUsuario == null) {
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        try (PrintWriter out = response.getWriter()) {
+            out.print("{\"error\": \"session_expired\"}");
+        }
+        return;
+    }
+    
+    try {
+        // 1. OBTENEMOS LA RUTA DEL ARCHIVO ORIGINAL DEL PROFESOR
+        String sqlProfesor = "SELECT ruta FROM ejercicio WHERE id = ?";
+        String ruta = null;
+        try (PreparedStatement psP = con.prepareStatement(sqlProfesor)) {
+            psP.setInt(1, idEjercicio);
+            try (ResultSet rsP = psP.executeQuery()) {
+                if (rsP.next()) {
+                    ruta = rsP.getString("ruta");
+                }
+            }
+        }
+
+        if (ruta == null || ruta.trim().isEmpty()) {
+            response.sendError(HttpServletResponse.SC_NOT_FOUND, "El ejercicio no tiene ruta asignada");
+            return;
+        }
+
+        File archivo = new File(ruta);
+        if (!archivo.exists()) {
+            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            response.setContentType("application/json");
+            try (PrintWriter out = response.getWriter()) {
+                out.print("{\"error\": \"archivo_no_encontrado\"}");
+            }
+            return;
+        }
+
+        // 2. LEEMOS EL CONTENIDO DEL JSON DEL PROFESOR (El que tiene "cells")
+        StringBuilder jsonBuilder = new StringBuilder();
+        try (BufferedReader br = new BufferedReader(new FileReader(archivo))) {
+            String linea;
+            while ((linea = br.readLine()) != null) {
+                jsonBuilder.append(linea);
+            }
+        }
+        String jsonOriginal = jsonBuilder.toString().trim();
+
+        // 3. BUSCAMOS SI EL ALUMNO TIENE PROGRESO GUARDADO
+        String progresoAlumno = null;
+        String sqlAlumno = "SELECT respuesta FROM usuejer WHERE idUsu = ? AND idEj = ?";
+        try (PreparedStatement psA = con.prepareStatement(sqlAlumno)) {
+            psA.setInt(1, idUsuario);
+            psA.setInt(2, idEjercicio);
+            try (ResultSet rsA = psA.executeQuery()) {
+                if (rsA.next()) {
+                    progresoAlumno = rsA.getString("respuesta");
+                }
+            }
+        }
+
+        // 4. ENSAMBLAJE MAGICO: Si hay progreso, se lo incrustamos al JSON original
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        try (PrintWriter out = response.getWriter()) {
+            if (progresoAlumno != null && progresoAlumno.contains("relations")) {
+                // Quitamos la llave de cierre '}' al json del profesor e inyectamos el progreso del alumno
+                String jsonCombinado = jsonOriginal.substring(0, jsonOriginal.lastIndexOf("}")) 
+                        + ", \"progresoAlumno\": " + progresoAlumno + "}";
+                out.print(jsonCombinado);
+            } else {
+                // Si no tiene progreso, mandamos el diseño limpio del profesor
+                out.print(jsonOriginal);
+            }
+            out.flush();
+        }
+
+    } catch (SQLException ex) {
+        Logger.getLogger(jsonServlet.class.getName()).log(Level.SEVERE, null, ex);
+        response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+    }
+}
     /**
      * Handles the HTTP <code>POST</code> method.
      *

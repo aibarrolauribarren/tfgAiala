@@ -1061,15 +1061,31 @@ class Mapper {
                 }
                 pkHeredada.isValidated = true;
 
+                const nombreAtributoEsperadoHija = nombrePkHeredada.toLowerCase().trim();
+
                 for (const pName of finalSuperNames) {
                     const tieneFK = subTable.fks?.find(f => f.targetRelation.toLowerCase() === pName.toLowerCase());
                     if (tieneFK) {
+                        // Extraemos el origen de la FK de forma segura en la tabla hija
+                        let origenDetectadoFK = "";
+                        if (tieneFK.attributes && tieneFK.attributes[0]) {
+                            const attr = tieneFK.attributes[0];
+                            origenDetectadoFK = (typeof attr === 'object' && attr.name) ? attr.name : attr.toString();
+                        }
+
+                        if (origenDetectadoFK.toLowerCase().trim() !== nombreAtributoEsperadoHija) {
+                            return {
+                                isCorrect: false,
+                                message: `Error de diseño en '${subTable.name}': La FK hacia '${pName}' debe nacer obligatoriamente del atributo '${nombrePkHeredada}', no de '${origenDetectadoFK}'.`
+                            };
+                        }
+
                         tieneFK.isValidated = true;
                     } else {
                         return { isCorrect: false, message: `La tabla '${subName}' necesita una FK hacia '${pName}'.` };
                     }
                 }
-            } else {
+            }else {
                 // --- CASO: CATEGORIZACIÓN (PKs DISTINTAS o UNIÓN) ---
                 const pkPropia = subTable.attributes.find(a => a.isPK);
                 if (!pkPropia) {
@@ -1077,7 +1093,7 @@ class Mapper {
                 }
                 pkPropia.isValidated = true;
 
-                for (const pName of finalSuperNames) {
+               /* for (const pName of finalSuperNames) {
                     const tablaPadre = studentRelational.relations.find(r => r.name.toLowerCase() === pName.toLowerCase());
                     if (!tablaPadre) return { isCorrect: false, message: `Falta la tabla '${pName}'.` };
 
@@ -1089,7 +1105,38 @@ class Mapper {
                     } else {
                         return { isCorrect: false, message: `La tabla '${pName}' debe tener una FK hacia '${subName}'.` };
                     }
+                }*/
+                // Aquí SÍ existe pkPropia. El atributo esperado en los padres es la PK de la hija ('k')
+                const nombreAtributoEsperadoPadre = pkPropia.name.toLowerCase().trim();
+
+                for (const pName of finalSuperNames) {
+                    const tablaPadre = studentRelational.relations.find(r => r.name.toLowerCase() === pName.toLowerCase());
+                    if (!tablaPadre) return { isCorrect: false, message: `Falta la tabla '${pName}'.` };
+
+                    const tieneFK = tablaPadre.fks?.find(f => f.targetRelation.toLowerCase() === subName.toLowerCase());
+                    if (tieneFK) {
+                        // Extraemos el origen de la FK de forma segura en la tabla padre
+                        let origenDetectadoFK = "";
+                        if (tieneFK.attributes && tieneFK.attributes[0]) {
+                            const attr = tieneFK.attributes[0];
+                            origenDetectadoFK = (typeof attr === 'object' && attr.name) ? attr.name : attr.toString();
+                        }
+
+                        if (origenDetectadoFK.toLowerCase().trim() !== nombreAtributoEsperadoPadre) {
+                            return {
+                                isCorrect: false,
+                                message: `Error de diseño en '${tablaPadre.name}': La FK hacia '${subName}' debe nacer obligatoriamente del atributo '${pkPropia.name}', no de '${origenDetectadoFK}'.`
+                            };
+                        }
+
+                        tieneFK.isValidated = true;
+                        const attrEnPadre = tablaPadre.attributes.find(a => a.name.toLowerCase() === nombreAtributoEsperadoPadre);
+                        if (attrEnPadre) attrEnPadre.isValidated = true;
+                    } else {
+                        return { isCorrect: false, message: `La tabla '${pName}' debe tener una FK hacia '${subName}'.` };
+                    }
                 }
+        
             }
 
             // Validar atributos normales (C1...)

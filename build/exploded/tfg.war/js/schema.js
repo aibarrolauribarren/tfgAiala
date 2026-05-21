@@ -64,7 +64,7 @@ class Schema {
         cont.appendChild(relation.element)
     }
     
-    createRelationFromData (relationData) {
+   /* createRelationFromData (relationData) {
         // 1. Creamos la relación (la tabla) con su nombre real
         const relation = new Relation(relationData.name, this);
         this.#relations.push(relation);
@@ -108,6 +108,31 @@ class Schema {
                             if (btn) {
                                 btn.classList.add('isPK'); // Cambia 'isPK' por la clase CSS exacta que use tu app
                             }
+                        }
+                    }
+                }
+            });
+        }
+        return relation;
+    }*/
+    createRelationFromData (relationData) {
+        const relation = new Relation(relationData.name, this);
+        this.#relations.push(relation);
+        
+        const cont = document.querySelector('#schemaContainer');
+        if (cont) cont.appendChild(relation.element);
+
+        // Inyectamos los atributos reales guardados en tu respuesta de la base de datos
+        if (relationData.attributes && Array.isArray(relationData.attributes)) {
+            relationData.attributes.forEach(attrData => {
+                if (typeof relation.createAttribute === 'function') {
+                    // Creamos el atributo pasándole su nombre real capturado ("A1", "A6", etc.)
+                    const nuevoAtributo = relation.createAttribute(attrData.name);
+                    
+                    // Si el registro de la BD dice que este atributo era PK, llamamos a tu método real
+                    if (attrData.isPK === true && nuevoAtributo) {
+                        if (typeof nuevoAtributo.toggleIsPK === 'function') {
+                            nuevoAtributo.toggleIsPK(); // Activa la llave primaria usando tus tripas de negocio
                         }
                     }
                 }

@@ -506,11 +506,41 @@ testMapping() {
     relActionContainer.style.left = `calc(${pos.right}px + 1em)`
   }
   
-  capturarEsquemaActual() {
+ /* capturarEsquemaActual() {
     const backup = {
       relations: this.#schema.relations.map(r => ({
         name: r.name,
         attributes: r.attributes.map(a => ({ name: a.name, isPK: a.isPK })),
+        fks: r.fks.map(fk => ({
+          targetRelation: fk.targetRelation.name,
+          attributes: fk.attributes.map(a => a.name)
+        }))
+      }))
+    };
+    return JSON.stringify(backup);
+  }*/
+capturarEsquemaActual() {
+    const backup = {
+      relations: this.#schema.relations.map(r => ({
+        name: r.name,
+        attributes: r.attributes.map(a => {
+            // === CONTROL SEGURO DE CAPTURA DE PK ===
+            // Como tu clase maneja de forma opaca la PK, la leemos directo de las clases del elemento HTML
+            let tienePK = false;
+            if (a.element) {
+                // Evaluamos si el elemento del atributo o su botón de clave contiene la clase activa de la PK
+                tienePK = a.element.classList.contains('isPK') || 
+                          a.element.classList.contains('pk') ||
+                          a.element.querySelector('.isPK') !== null ||
+                          a.element.querySelector('.pk.selected') !== null ||
+                          a.element.querySelector('.pkButton.selected') !== null;
+            }
+            
+            return { 
+                name: a.name, 
+                isPK: tienePK 
+            };
+        }),
         fks: r.fks.map(fk => ({
           targetRelation: fk.targetRelation.name,
           attributes: fk.attributes.map(a => a.name)

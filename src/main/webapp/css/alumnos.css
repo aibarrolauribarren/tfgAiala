@@ -2,8 +2,7 @@
 Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
 Click nbfs://nbhost/SystemFileSystem/Templates/ClientSide/css.css to edit this template
 */
-/* 
-    Created on : 7 mar 2026, 16:12:26
+/* Created on : 7 mar 2026, 16:12:26
     Author     : quick
 */
 
@@ -19,6 +18,7 @@ body {
     min-height: 100vh;
     margin: 0;
     padding: 20px;
+    box-sizing: border-box;
 }
 
 /* Encabezado */
@@ -29,20 +29,19 @@ h1 {
 }
 
 
-/* Tabla centrada y grande */
+/* Tabla adaptada a la pantalla */
 table.table1 {
     border-collapse: separate;
-    width: 250%;       
-    max-width: 1200px; 
+    width: 100%;          /* ¡CORREGIDO! Antes estaba en 250% y por eso se salía */
+    max-width: 1100px;    /* Límite máximo elegante para que no estire al infinito en pantallas gigantes */
     text-align: center;
-    margin: 0 auto ; 
-    font-size: 1.5em;
+    margin: 0 auto; 
+    font-size: 1.2em;     /* Reducido un poco (de 1.5em) para que no sea tan tosca */
     background-color: #ffffff; 
     box-shadow: 0 6px 15px rgba(0,0,0,0.2); 
     border-radius: 10px; 
     overflow: hidden;
 }
-
 
 table.table1 tr:nth-child(even) {
     background-color: #f9f9f9; 
@@ -50,10 +49,11 @@ table.table1 tr:nth-child(even) {
 
 /* Celdas */
 table.table1 td, table.table1 th {
-    padding: 15px 10px;
-    height:60px;
+    padding: 12px 15px;   /* Ajustado para mejor balance visual */
+    height: 50px;         /* Reducido ligeramente de 60px */
     border: 1px solid #ccc;
 }
+
 table td a {
     display: block;          /* ocupa toda la celda */
     text-decoration: none;   /* quita subrayado */
@@ -62,26 +62,26 @@ table td a {
     height: 100%;
 }
 
-table.table2{
-    border-collapse:separate;
+/* Subtablas internas (ejercicios) */
+table.table2 {
+    border-collapse: separate;
     border-spacing: 3px;
-    width:100%;
+    width: 100%;
 }
 
-table.table2 td{
-    padding:10px;
+table.table2 td {
+    padding: 8px;         /* Compactado un pelín para que quepan holgadamente en su celda */
     border: 2px solid #666;
     border-radius: 5px;
-    
 }
 
-table.table2 td:hover{
+table.table2 td:hover {
     background-color: #d3d3d3;
-    cursor:pointer;
+    cursor: pointer;
 }
 
 /* Boton añadir + EVALUABLES */
-.btn-anadir{
+.btn-anadir {
     padding: 12px 25px;
     margin: 5px;
     font-size: 1em;

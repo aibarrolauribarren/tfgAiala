@@ -165,12 +165,21 @@ class Relation {
         relNameEl.focus()
     }
 
-    createAttribute () {
+  /*  createAttribute () {
         const name = this.#getNewAttrName()
         const attribute = new Attribute(name, this)
         this.#attributes.push(attribute)
         const insertionPoint = this.#element.querySelector('.newAttribute')
         insertionPoint.parentNode.insertBefore(attribute.element,insertionPoint)
+    }*/
+    createAttribute (forcedName = null) {
+        // Si pasamos un nombre forzado (ej: "A6"), lo usa; si no, calcula el genérico automáticamente
+        const name = forcedName ? forcedName : this.#getNewAttrName()
+        const attribute = new Attribute(name, this)
+        this.#attributes.push(attribute)
+        const insertionPoint = this.#element.querySelector('.newAttribute')
+        insertionPoint.parentNode.insertBefore(attribute.element,insertionPoint)
+        return attribute // <--- MUY IMPORTANTE: Añade este return para poder manipular el atributo tras crearlo
     }
 
     createElement () {

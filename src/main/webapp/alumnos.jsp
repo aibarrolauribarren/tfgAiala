@@ -106,7 +106,7 @@
                                     
                                         %>
                                         <td style="background-color: <%= color %>; color: black;">
-                                            <a href="ejercicioResuelto.jsp?id=<%=e.getId()%>" style="display:block;"> <%= e.getId() %></a>
+                                            <%=e.getId()%>
                                         </td>
                                         <%
                                      }
